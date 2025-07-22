@@ -12,17 +12,12 @@ import io
 import pandas as pd
 import requests
 
-# Récupérer la clé API OpenAI depuis les variables d'environnement (Streamlit Cloud: "secrets")
 api_key_env = os.getenv("OPENAI_API_KEY")
-
-# Champ pour l'utilisateur dans la sidebar (champ masqué, pré-rempli si une clé existe déjà)
 user_api_key = st.sidebar.text_input(
     "OpenAI API Key (optionnel, pour l'analyse IA)",
     type="password",
-    value=api_key_env if api_key_env else ""
+    value=""  # NE PAS pré-remplir
 )
-
-# La clé utilisée sera celle saisie par l'utilisateur, sinon celle des secrets/environnement
 api_key = user_api_key if user_api_key else api_key_env
 
 # --------- TRADUCTIONS ---------
