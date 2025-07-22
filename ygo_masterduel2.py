@@ -12,15 +12,18 @@ import pandas as pd
 import requests
 import os
 
-# le fichier config.env
-api_key_env = os.getenv("OPENAI_API_KEY")
+_env = st.secrets.get("OPENAI_", "")
 
-# --- Clé API OpenAI à rentrer dans la sidebar ---
-api_key = st.sidebar.text_input(
+# Champ dans la sidebar (priorité à la clé entrée par l'utilisateur)
+user_ = st.sidebar.text_input(
     "OpenAI API Key (optionnel, pour l'analyse IA)",
     type="password",
-    value=api_key_env if api_key_env else ""
+    value="",  
+    placeholder="Votre clé ici (optionnel)"
 )
+
+# Utilise la clé utilisateur si elle est saisie, sinon la clé stockée dans secrets
+api_key = user_api_key if user_api_key else api_key_env
 
 # --------- TRADUCTIONS ---------
 TRS = {
@@ -456,8 +459,8 @@ def role_explanation(role, p, mn, mx, lang):
     
 # --- IA advice ---
 
-def get_ia_advice(api_key, resume_stats, lang="fr"):
-    if not api_key:
+def get_ia_advice(, resume_stats, lang="fr"):
+    if not :
         return "Aucune clé API fournie. L'analyse IA n'est pas disponible."
     prompt_fr = f"""Tu es un expert Yu-Gi-Oh! et deckbuilder. Voici les probabilités d'ouverture d'un deck :
 {resume_stats}
@@ -467,7 +470,7 @@ Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points f
 Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
     prompt = prompt_fr if lang == "fr" else prompt_en
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {}",
         "Content-Type": "application/json"
     }
     body = {
@@ -656,10 +659,10 @@ if st.session_state.get("run_calc_done", False):
     stats_txt += f"{T['theor_global']}: {theor_global:.2f}%\n"
     stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
 
-    if api_key:
+    if :
         st.markdown("### 🤖 Analyse IA du deck")
         with st.spinner("Analyse en cours…"):
-            conseil = get_ia_advice(api_key, stats_txt, lang)
+            conseil = get_ia_advice(, stats_txt, lang)
             st.info(conseil)
     else:
         st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
