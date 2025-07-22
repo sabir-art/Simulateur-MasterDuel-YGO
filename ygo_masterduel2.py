@@ -124,6 +124,35 @@ st.session_state["n_sim"] = st.sidebar.number_input(
 # Titre principal
 st.title(T["main_title"])
 st.caption(T["subtitle"])
+# --- Résumé paramètres deck (barre d'info) ---
+def deck_summary(deck_name, deck_size, hand_size, first_player, n_sim, lang):
+    if lang == "fr":
+        who = "First" if first_player else "Second"
+        return (
+            f"<b>Deck:</b> <code style='color:#22d47a'>{deck_name}</code>"
+            f" <b>| Taille:</b> {deck_size}"
+            f" <b>| Main:</b> {hand_size}"
+            f" <b>| First:</b> {who}"
+            f" <b>| <span style='color:#fff18d'>Monte Carlo</span> :</b> {n_sim} essais"
+        )
+    else:
+        who = "First" if first_player else "Second"
+        return (
+            f"<b>Deck:</b> <code style='color:#22d47a'>{deck_name}</code>"
+            f" <b>| Size:</b> {deck_size}"
+            f" <b>| Hand:</b> {hand_size}"
+            f" <b>| First:</b> {who}"
+            f" <b>| <span style='color:#fff18d'>Monte Carlo</span> :</b> {n_sim} runs"
+        )
+
+st.markdown(deck_summary(
+    st.session_state["deck_name"],
+    st.session_state["deck_size"],
+    st.session_state["hand_size"],
+    st.session_state["first_player"],
+    st.session_state["n_sim"],
+    lang
+), unsafe_allow_html=True)
 # ----------- DÉFINITION DES RÔLES PAR DÉFAUT (MULTILINGUE) -----------
 DEFAULT_CATS = [
     {
@@ -610,3 +639,14 @@ if api_key:
         st.info(conseil)
 else:
     st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
+
+    # --- Copyright ---
+    st.markdown("""
+<hr style='margin-top: 30px; margin-bottom: 5px; opacity:0.25'>
+<center>
+    <span style='color:#aaa; font-size:0.96em'>
+        Simulateur Yu-Gi-Oh! - par SABIR Abdellah - 2025
+    </span>
+</center>
+""", unsafe_allow_html=True)
+
