@@ -459,7 +459,7 @@ def role_explanation(role, p, mn, mx, lang):
     
 # --- IA advice ---
 
-def get_ia_advice(, resume_stats, lang="fr"):
+def get_ia_advice(api_key, resume_stats, lang="fr"):
     if not :
         return "Aucune clé API fournie. L'analyse IA n'est pas disponible."
     prompt_fr = f"""Tu es un expert Yu-Gi-Oh! et deckbuilder. Voici les probabilités d'ouverture d'un deck :
