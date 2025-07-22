@@ -659,7 +659,7 @@ if st.session_state.get("run_calc_done", False):
     stats_txt += f"{T['theor_global']}: {theor_global:.2f}%\n"
     stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
 
-    if :
+    if api_key:
         st.markdown("### 🤖 Analyse IA du deck")
         with st.spinner("Analyse en cours…"):
             conseil = get_ia_advice(, stats_txt, lang)
