@@ -472,7 +472,7 @@ Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses
         "Content-Type": "application/json"
     }
     body = {
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-4o",
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 350,
         "temperature": 0.7
