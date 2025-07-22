@@ -319,6 +319,41 @@ else:
 
 # ----------- Résultats après calcul -----------
 if st.session_state.get("run_calc_done", False):
+        # --------- EXPORT PDF ---------
+    st.markdown("### Export PDF des résultats")
+    import io
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+    # Préparation des données pour le tableau PDF
+    roles = [cat["name"] for cat in categories]
+    theor_vals = [details[cat["name"]] for cat in categories]
+    monte_vals = [sim_results[cat["name"]] for cat in categories]
+    explanations = {}
+    for i, cat in enumerate(categories):
+        role = cat["name"]
+        theor = theor_vals[i]
+        monte = monte_vals[i]
+        exp = role_explanation(role, theor, cat['min'], cat['max'])
+        explanations[role] = exp
+
+    st.download_button(
+        "Exporter en PDF",
+        data=export_results_pdf(
+            st.session_state["deck_name"],
+            st.session_state["deck_size"],
+            st.session_state["hand_size"],
+            st.session_state["first_player"],
+            st.session_state["n_sim"],
+            theor_global,
+            monte_global,
+            theor_vals,
+            monte_vals,
+            explanations,
+            buf
+        ),
+        file_name="simulation_ygo.pdf"
+    )
     st.header("Résultats - Probabilités")
 
     # ----------- Probabilités hypergéométriques -----------
