@@ -22,9 +22,6 @@ user_api_key = st.sidebar.text_input(
 )
 api_key = user_api_key if user_api_key else api_key_env
 
-st.write(f"API Key détectée : {'PRÉSENTE' if api_key else 'AUCUNE'}")
-st.write(f"API KEY: {api_key[:8] + '...' if api_key else 'vide'}")
-
 # --------- TRADUCTIONS ---------
 TRS = {
     "fr": {
@@ -469,9 +466,6 @@ Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points f
 {resume_stats}
 Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
     prompt = prompt_fr if lang == "fr" else prompt_en
-
-    # DEBUG : Affiche ce que tu envoies
-    st.write(f"Appel API avec clé: {api_key[:8]}...")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
