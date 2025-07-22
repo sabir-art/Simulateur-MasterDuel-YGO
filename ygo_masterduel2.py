@@ -193,16 +193,18 @@ cat_names_list = [n.strip() for n in cat_names.split('\n') if n.strip()]
 categories = []
 for i, cat in enumerate(cat_names_list):
     col1, col2, col3 = st.columns([2, 2, 2])
-    # Valeurs par défaut robustes
+    # Toujours récupérer le dico desc original si dispo
     default_q = st.session_state['cats'][i]['q'] if i < len(st.session_state['cats']) else 0
     default_min = st.session_state['cats'][i]['min'] if i < len(st.session_state['cats']) else 0
     default_max = st.session_state['cats'][i]['max'] if i < len(st.session_state['cats']) else default_min
-    # --- DESC multilingue robuste ---
-    desc_val = st.session_state['cats'][i]['desc'] if i < len(st.session_state['cats']) and 'desc' in st.session_state['cats'][i] else ""
-    if isinstance(desc_val, dict):
-        desc = desc_val.get(lang, "")
+    default_desc_dict = None
+    if i < len(st.session_state['cats']) and isinstance(st.session_state['cats'][i].get('desc', None), dict):
+        default_desc_dict = st.session_state['cats'][i]['desc']
     else:
-        desc = desc_val  # Si jamais string
+        # fallback
+        default_desc_dict = {"fr": "", "en": ""}
+    desc = default_desc_dict.get(lang, "")
+
     with col1:
         q = st.number_input(
             f"Nb de '{cat}'" if lang == "fr" else f"Number of '{cat}'",
@@ -215,7 +217,7 @@ for i, cat in enumerate(cat_names_list):
         mx = st.number_input(
             f"Max '{cat}' en main" if lang == "fr" else f"Max '{cat}' in hand",
             mn, min(st.session_state['hand_size'], 5), default_max, key=f"{cat}_mx")
-    categories.append({'name': cat, 'q': q, 'min': mn, 'max': mx, "desc": desc})
+    categories.append({'name': cat, 'q': q, 'min': mn, 'max': mx, "desc": default_desc_dict})
     if desc:
         st.markdown(
             f'<span style="font-size:0.97em;color:#b3b3b3;opacity:0.68; margin-left:2px">{desc}</span>',
