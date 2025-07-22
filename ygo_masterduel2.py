@@ -8,6 +8,8 @@ from fpdf import FPDF
 from unidecode import unidecode
 import io
 import pandas as pd
+# --- Clé API OpenAI à rentrer dans la sidebar ---
+api_key = st.sidebar.text_input("OpenAI API Key (optionnel, pour l'analyse IA)", type="password")
 
 # --------- TRADUCTIONS ---------
 TRS = {
@@ -49,7 +51,7 @@ TRS = {
         "hand_size": "Starting hand size",
         "n_sim": "Number of Monte Carlo simulations",
         "main_title": "Yu-Gi-Oh! Master Duel Probability Simulator",
-        "subtitle": "Build your deck, simulate your opening odds, and export your results as a PDF.",
+        "subtitle": "Build your deck,  your opening odds, and export your results as a PDF.",
         "category_config": "Card types configuration",
         "cat_names": "Category names (one per line, e.g.: Starter, Extender, Board Breaker, Handtrap, Tech Card, Brick)",
         "calc": "Calculate probabilities!",
@@ -384,6 +386,45 @@ def simulate(deck_size, hand_size, categories, n_sim=10000):
                 success[r] += 1
     results = {r: (success[r]/n_sim)*100 for r in roles}
     return results
+    
+# ----------- Fonction d’appel à l’API OpenAI -----------
+
+import requests
+
+def get_ia_advice(api_key, resume_stats, lang="fr"):
+    """
+    Appelle ChatGPT pour générer une analyse/conseil basé sur le résumé des stats
+    """
+    if not api_key:
+        return "Aucune clé API fournie. L'analyse IA n'est pas disponible."
+
+    prompt_fr = f"""Tu es un expert Yu-Gi-Oh! et deckbuilder. Voici les probabilités d'ouverture d'un deck :
+{resume_stats}
+Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points forts/faibles, et donne un conseil d'amélioration."""
+    prompt_en = f"""You are a Yu-Gi-Oh! expert and deckbuilder. Here are opening hand odds for a deck:
+{resume_stats}
+Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
+
+    prompt = prompt_fr if lang == "fr" else prompt_en
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 350,
+        "temperature": 0.7
+    }
+    try:
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=body, timeout=18)
+        res.raise_for_status()
+        data = res.json()
+        return data['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        return f"Erreur IA: {e}" if lang == "fr" else f"AI Error: {e}"
+
 
 # ----------- GÉNÉRATION EXPLICATION PAR RÔLE ET CAS -----------
 def role_explanation(role, p, mn, mx, lang):
@@ -549,3 +590,23 @@ if st.session_state.get("run_calc_done", False):
         ),
         file_name="simulation_ygo.pdf"
     )
+# --- Récapitulatif pour l'IA ---
+stats_txt = ""
+for cat in categories:
+    role = cat["name"]
+    theor = details[role]
+    monte = sim_results[role]
+    if lang == "fr":
+        stats_txt += f"{role}: Théorique {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
+    else:
+        stats_txt += f"{role}: Theoretical {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
+stats_txt += f"{T['theor_global']}: {theor_global:.2f}%\n"
+stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
+
+if api_key:
+    st.markdown("### 🤖 Analyse IA du deck")
+    with st.spinner("Analyse en cours…"):
+        conseil = get_ia_advice(api_key, stats_txt, lang)
+        st.info(conseil)
+else:
+    st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
