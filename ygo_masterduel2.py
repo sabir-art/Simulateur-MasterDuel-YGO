@@ -485,27 +485,27 @@ else:
     st.session_state["run_calc_done"] = False
 
 if st.session_state.get("run_calc_done", False):
-    # CALCULS
-    details = hypergeom_prob(
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        categories,
-    )
-    theor_global = 1.0
-    for v in details.values():
-        theor_global *= v/100 if v > 0 else 1
-    theor_global = theor_global * 100
+    # ... (calculs + affichage + export + tout ce que tu veux)
+    # --- Récapitulatif pour l'IA ---
+    stats_txt = ""
+    for cat in categories:
+        role = cat["name"]
+        theor = details[role]
+        monte = sim_results[role]
+        if lang == "fr":
+            stats_txt += f"{role}: Théorique {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
+        else:
+            stats_txt += f"{role}: Theoretical {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
+    stats_txt += f"{T['theor_global']}: {theor_global:.2f}%\n"
+    stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
 
-    sim_results = simulate(
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        categories,
-        st.session_state["n_sim"]
-    )
-    monte_global = 1.0
-    for v in sim_results.values():
-        monte_global *= v/100 if v > 0 else 1
-    monte_global = monte_global * 100
+    if api_key:
+        st.markdown("### 🤖 Analyse IA du deck")
+        with st.spinner("Analyse en cours…"):
+            conseil = get_ia_advice(api_key, stats_txt, lang)
+            st.info(conseil)
+    else:
+        st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
 
     # PRÉPARER LES EXPLICATIONS
     explanations = []
