@@ -395,27 +395,48 @@ if st.session_state.get("run_calc_done", False):
     st.pyplot(fig)
 
     # --------- EXPORT PDF ---------
-    st.markdown("### Export PDF des résultats")
-    import io
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-    # Compose texte complet
-    result_text = "Résumé complet :\n\n" + "\n".join(theor_explains) + "\nMonte Carlo :\n" + "\n".join(monte_explains)
-    st.download_button(
-        "Exporter en PDF",
-        data=export_results_pdf(
-            st.session_state["deck_name"],
-            st.session_state["deck_size"],
-            st.session_state["hand_size"],
-            st.session_state["first_player"],
-            st.session_state["n_sim"],
-            theor_global,
-            monte_global,
-            theor_explains,
-            monte_explains,
-            result_text,
-            buf
-        ),
-        file_name="simulation_ygo.pdf"
-    )
+from unidecode import unidecode  # Pour retirer accents des textes français (évite bugs PDF)
+
+def remove_accents(txt):
+    try:
+        return unidecode(str(txt))
+    except Exception:
+        return str(txt)
+
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_details, monte_details, explanations, img_bytes):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 8, remove_accents(f"Simulation probabilites Yu-Gi-Oh!"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Deck: {deck_name}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Taille du deck: {deck_size}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Main de depart: {hand_size}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{'First' if first_player else 'Second'}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Simulations Monte Carlo: {n_sim}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Probabilite theorique globale: {theor_global:.2f}%"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"Probabilite Monte Carlo globale: {monte_global:.2f}%"), ln=1)
+    pdf.ln(5)
+    # --------- Tableau résultats par rôle ---------
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(55, 8, remove_accents("Role"), 1)
+    pdf.cell(35, 8, remove_accents("Theorique (%)"), 1)
+    pdf.cell(35, 8, remove_accents("Monte Carlo (%)"), 1)
+    pdf.cell(0, 8, remove_accents("Explication"), 1)
+    pdf.ln()
+    pdf.set_font("Arial", "", 10)
+    for i, role in enumerate(explanations):
+        # theor_details[i], monte_details[i] = % pour chaque rôle
+        expl = remove_accents(explanations[role])
+        pdf.cell(55, 8, remove_accents(role), 1)
+        pdf.cell(35, 8, f"{theor_details[i]:.2f}", 1)
+        pdf.cell(35, 8, f"{monte_details[i]:.2f}", 1)
+        pdf.multi_cell(0, 8, expl, border=1)
+    pdf.ln(2)
+    # --------- Graphique (optionnel) ---------
+    if img_bytes is not None:
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(img_bytes.getbuffer())
+            tmp.flush()
+            pdf.image(tmp.name, x=10, w=170)
+    return pdf.output(dest="S").encode("latin1")
