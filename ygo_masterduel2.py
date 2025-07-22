@@ -662,7 +662,7 @@ if st.session_state.get("run_calc_done", False):
     if api_key:
         st.markdown("### 🤖 Analyse IA du deck")
         with st.spinner("Analyse en cours…"):
-            conseil = get_ia_advice(api_key, stats_txt, lang)
+            conseil = get_ia_advice(, stats_txt, lang)
             st.info(conseil)
     else:
         st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
