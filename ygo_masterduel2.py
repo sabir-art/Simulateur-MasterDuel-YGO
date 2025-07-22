@@ -5,6 +5,7 @@ import numpy as np
 from fpdf import FPDF
 import matplotlib.pyplot as plt
 from scipy.stats import hypergeom
+from unidecode import unidecode  # Pour PDF sans accents
 
 # --------- GESTION DE LA LANGUE ---------
 LANGS = {
@@ -75,56 +76,9 @@ st.session_state["n_sim"] = st.sidebar.number_input(
     "Nombre de simulations Monte Carlo", 1000, 100000, st.session_state["n_sim"], step=1000
 )
 
-# --------- EXPORT PDF ---------
-# ----------- EXPORT PDF UTILITAIRE -----------
-from fpdf import FPDF
-
-def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_details, monte_details, result_text, img_bytes):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 12, f"Simulation Probabilités Yu-Gi-Oh!", ln=1, align="C")
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 9, f"Deck : {deck_name}", ln=1)
-    pdf.cell(0, 8, f"Taille du deck : {deck_size}", ln=1)
-    pdf.cell(0, 8, f"Main de départ : {hand_size}", ln=1)
-    pdf.cell(0, 8, f"{'First' if first_player else 'Second'}", ln=1)
-    pdf.cell(0, 8, f"Simulations Monte Carlo : {n_sim}", ln=1)
-    pdf.ln(4)
-    pdf.set_font("Arial", "B", 13)
-    pdf.cell(0, 8, f"Probabilité théorique générale : {theor_global:.2f}%", ln=1)
-    pdf.cell(0, 8, f"Probabilité Monte Carlo générale : {monte_global:.2f}%", ln=1)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Détails par rôle (théorique):", ln=1)
-    pdf.set_font("Arial", "", 11)
-    for t in theor_details:
-        pdf.multi_cell(0, 6, t)
-    pdf.ln(3)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Détails par rôle (Monte Carlo):", ln=1)
-    pdf.set_font("Arial", "", 11)
-    for t in monte_details:
-        pdf.multi_cell(0, 6, t)
-    pdf.ln(3)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Résumé complet :", ln=1)
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 6, result_text)
-    pdf.ln(4)
-    # Image
-    if img_bytes is not None:
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-            tmp.write(img_bytes.getbuffer())
-            tmp.flush()
-            pdf.image(tmp.name, x=20, w=170)
-    return pdf.output(dest="S").encode("latin1")
-
 # --------- TITRE PRINCIPAL ---------
 st.title("Simulateur de probabilités Yu-Gi-Oh! Master Duel")
 st.caption("Créez votre deck, simulez vos probabilités d'ouverture et exportez vos résultats en PDF.")
-
-# ------ SUITE : (PARTIE 2) ------
 # ----------- DÉFINITION DES RÔLES PAR DÉFAUT -----------
 DEFAULT_CATS = [
     {"name": "Starter", "desc": "Carte qui lance le combo/stratégie principale.", "q": 12, "min": 1, "max": 3},
@@ -167,11 +121,10 @@ for i, cat in enumerate(cat_names_list):
         st.markdown(f'<span style="font-size:0.97em;color:#b3b3b3;opacity:0.68; margin-left:2px">{desc}</span>', unsafe_allow_html=True)
 
 st.session_state['cats'] = categories
-
 # ----------- FONCTIONS DE CALCUL -----------
 def hypergeom_prob(deck_size, hand_size, categories):
     """
-    Calcule la probabilité hypergéométrique pour chaque type
+    Calcule la probabilité hypergéométrique pour chaque type.
     Retourne : dict(role: probabilité %)
     """
     from scipy.stats import hypergeom
@@ -194,7 +147,7 @@ def hypergeom_prob(deck_size, hand_size, categories):
 
 def simulate(deck_size, hand_size, categories, n_sim=10000):
     """
-    Simule n_sim mains de départ pour donner des statistiques réelles par type
+    Simule n_sim mains de départ pour donner des statistiques réelles par type.
     """
     import numpy as np
     deck = []
@@ -216,10 +169,10 @@ def simulate(deck_size, hand_size, categories, n_sim=10000):
     results = {r: (success[r]/n_sim)*100 for r in roles}
     return results
 
-# ----------- PHRASES INTELLIGENTES PAR RÔLE & RANGE -----------
+# ----------- PHRASES EXPLICATIVES PAR RÔLE -----------
 def role_explanation(role, p, mn, mx):
     """
-    Génère une explication intelligente pour chaque type/role, selon min/max choisi.
+    Explication personnalisée pour chaque rôle selon le min/max choisi.
     """
     p = round(p, 2)
     role_low = role.lower()
@@ -303,7 +256,6 @@ def display_role_results(details, categories):
 # ----------- ANIMATION, CALCUL & AFFICHAGE -----------
 calc = st.button("Calculer les probabilités !", use_container_width=True)
 if calc:
-    # Animation de 10s
     progress = st.empty()
     progress_text = st.empty()
     for percent in range(0, 101, 2):
@@ -316,121 +268,8 @@ if calc:
     st.session_state["run_calc_done"] = True
 else:
     st.session_state["run_calc_done"] = False
-
-# ----------- Résultats après calcul -----------
-if st.session_state.get("run_calc_done", False):
-        # --------- EXPORT PDF ---------
-    st.markdown("### Export PDF des résultats")
-    import io
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-    # Préparation des données pour le tableau PDF
-    roles = [cat["name"] for cat in categories]
-    theor_vals = [details[cat["name"]] for cat in categories]
-    monte_vals = [sim_results[cat["name"]] for cat in categories]
-    explanations = {}
-    for i, cat in enumerate(categories):
-        role = cat["name"]
-        theor = theor_vals[i]
-        monte = monte_vals[i]
-        exp = role_explanation(role, theor, cat['min'], cat['max'])
-        explanations[role] = exp
-
-    st.download_button(
-        "Exporter en PDF",
-        data=export_results_pdf(
-            st.session_state["deck_name"],
-            st.session_state["deck_size"],
-            st.session_state["hand_size"],
-            st.session_state["first_player"],
-            st.session_state["n_sim"],
-            theor_global,
-            monte_global,
-            theor_vals,
-            monte_vals,
-            explanations,
-            buf
-        ),
-        file_name="simulation_ygo.pdf"
-    )
-    st.header("Résultats - Probabilités")
-
-    # ----------- Probabilités hypergéométriques -----------
-    details = hypergeom_prob(
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        categories,
-    )
-    # Proba globale théorique (toutes les conditions réunies)
-    theor_global = 1.0
-    for v in details.values():
-        theor_global *= v/100 if v > 0 else 1
-    theor_global = theor_global * 100
-
-    st.subheader(f"Probabilité théorique globale : {theor_global:.2f}%")
-    theor_explains = []
-    for cat in categories:
-        role = cat['name']
-        p = details.get(role, 0)
-        mn, mx = cat['min'], cat['max']
-        exp = role_explanation(role, p, mn, mx)
-        theor_explains.append(f"{role} : {p:.2f}%\n{exp}\n")
-        st.markdown(
-            f"""
-            <div style="margin-bottom:8px;">
-                <span style="font-weight:700; color:#1ed760; font-size:1.13em;">{role} : {p:.2f}%</span><br>
-                <span style="font-size:1em;">{exp}</span>
-                <hr style="border:0.5px solid #1ed760; opacity:0.28; margin:8px 0;">
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # ----------- Monte Carlo -----------
-    st.header("Résultats - Simulation Monte Carlo")
-    sim_results = simulate(
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        categories,
-        st.session_state["n_sim"]
-    )
-    # Proba globale Monte Carlo (toutes conditions réunies)
-    monte_global = 1.0
-    for v in sim_results.values():
-        monte_global *= v/100 if v > 0 else 1
-    monte_global = monte_global * 100
-    st.subheader(f"Probabilité Monte Carlo globale : {monte_global:.2f}%")
-    monte_explains = []
-    for cat in categories:
-        role = cat['name']
-        p = sim_results.get(role, 0)
-        mn, mx = cat['min'], cat['max']
-        exp = role_explanation(role, p, mn, mx)
-        monte_explains.append(f"{role} : {p:.2f}%\n{exp}\n")
-        st.markdown(
-            f"""
-            <div style="margin-bottom:8px;">
-                <span style="font-weight:700; color:#11e1e1; font-size:1.13em;">{role} (MC) : {p:.2f}%</span><br>
-                <span style="font-size:1em;">{exp}</span>
-                <hr style="border:0.5px solid #11e1e1; opacity:0.28; margin:8px 0;">
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # --------- GRAPHIQUE matplotlib ---------
-    fig, ax = plt.subplots()
-    roles = [cat["name"] for cat in categories]
-    values = [details[cat["name"]] for cat in categories]
-    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
-    ax.barh(roles, values, color=colors)
-    ax.set_xlabel('Probabilité (%)')
-    ax.set_title("Probabilité d'obtenir chaque type de carte (Hypergéométrique)")
-    st.pyplot(fig)
-
-    # --------- EXPORT PDF ---------
-from unidecode import unidecode  # Pour retirer accents des textes français (évite bugs PDF)
+from unidecode import unidecode  # Pour PDF sans accents
+import io
 
 def remove_accents(txt):
     try:
@@ -438,7 +277,7 @@ def remove_accents(txt):
     except Exception:
         return str(txt)
 
-def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_details, monte_details, explanations, img_bytes):
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "", 12)
@@ -460,11 +299,10 @@ def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, the
     pdf.ln()
     pdf.set_font("Arial", "", 10)
     for i, role in enumerate(explanations):
-        # theor_details[i], monte_details[i] = % pour chaque rôle
         expl = remove_accents(explanations[role])
         pdf.cell(55, 8, remove_accents(role), 1)
-        pdf.cell(35, 8, f"{theor_details[i]:.2f}", 1)
-        pdf.cell(35, 8, f"{monte_details[i]:.2f}", 1)
+        pdf.cell(35, 8, f"{theor_vals[i]:.2f}", 1)
+        pdf.cell(35, 8, f"{monte_vals[i]:.2f}", 1)
         pdf.multi_cell(0, 8, expl, border=1)
     pdf.ln(2)
     # --------- Graphique (optionnel) ---------
@@ -475,3 +313,99 @@ def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, the
             tmp.flush()
             pdf.image(tmp.name, x=10, w=170)
     return pdf.output(dest="S").encode("latin1")
+
+# ----------- RÉSULTATS & AFFICHAGE FINAL -----------
+if st.session_state.get("run_calc_done", False):
+    # --- Probabilités hypergéométriques
+    details = hypergeom_prob(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+    )
+    # Proba globale théorique
+    theor_global = 1.0
+    for v in details.values():
+        theor_global *= v/100 if v > 0 else 1
+    theor_global = theor_global * 100
+
+    # --- Résultats par rôle
+    theor_explains = {}
+    for cat in categories:
+        role = cat['name']
+        p = details.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx)
+        theor_explains[role] = exp
+
+    # --- Monte Carlo
+    sim_results = simulate(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+        st.session_state["n_sim"]
+    )
+    monte_global = 1.0
+    for v in sim_results.values():
+        monte_global *= v/100 if v > 0 else 1
+    monte_global = monte_global * 100
+
+    monte_explains = {}
+    for cat in categories:
+        role = cat['name']
+        p = sim_results.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx)
+        monte_explains[role] = exp
+
+    # --------- AFFICHAGE TABLE STREAMLIT ---------
+    import pandas as pd
+    table = []
+    for i, cat in enumerate(categories):
+        r = cat["name"]
+        table.append({
+            "Rôle": r,
+            "Théorique (%)": round(details[r],2),
+            "Monte Carlo (%)": round(sim_results[r],2),
+            "Explication": theor_explains[r]
+        })
+    df = pd.DataFrame(table)
+    st.markdown("### Tableau complet des résultats")
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+    st.markdown(f"**Probabilité théorique globale** : {theor_global:.2f}%")
+    st.markdown(f"**Probabilité Monte Carlo globale** : {monte_global:.2f}%")
+
+    # --------- GRAPHIQUE matplotlib ---------
+    fig, ax = plt.subplots()
+    roles = [cat["name"] for cat in categories]
+    values = [details[cat["name"]] for cat in categories]
+    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
+    ax.barh(roles, values, color=colors)
+    ax.set_xlabel('Probabilité (%)')
+    ax.set_title("Probabilité d'obtenir chaque type de carte (Hypergéométrique)")
+    st.pyplot(fig)
+
+    # --------- EXPORT PDF ---------
+    st.markdown("### Export PDF des résultats")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+    theor_vals = [details[cat["name"]] for cat in categories]
+    monte_vals = [sim_results[cat["name"]] for cat in categories]
+    st.download_button(
+        "Exporter en PDF",
+        data=export_results_pdf(
+            st.session_state["deck_name"],
+            st.session_state["deck_size"],
+            st.session_state["hand_size"],
+            st.session_state["first_player"],
+            st.session_state["n_sim"],
+            theor_global,
+            monte_global,
+            theor_vals,
+            monte_vals,
+            theor_explains,
+            buf
+        ),
+        file_name="simulation_ygo.pdf"
+    )
