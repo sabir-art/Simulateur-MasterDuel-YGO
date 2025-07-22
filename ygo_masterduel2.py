@@ -470,7 +470,7 @@ Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points f
 Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
     prompt = prompt_fr if lang == "fr" else prompt_en
     headers = {
-        "Authorization": f"Bearer {}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
     body = {
