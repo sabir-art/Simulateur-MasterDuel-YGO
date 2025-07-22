@@ -469,6 +469,10 @@ Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points f
 {resume_stats}
 Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
     prompt = prompt_fr if lang == "fr" else prompt_en
+
+    # DEBUG : Affiche ce que tu envoies
+    st.write(f"Appel API avec clé: {api_key[:8]}...")
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -480,12 +484,16 @@ Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses
         "temperature": 0.7
     }
     try:
-        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=body, timeout=18)
+        res = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers, json=body, timeout=18
+        )
         res.raise_for_status()
         data = res.json()
         return data['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Erreur IA: {e}" if lang == "fr" else f"AI Error: {e}"
+        
 def remove_accents(txt):
     try:
         return unidecode(str(txt))
