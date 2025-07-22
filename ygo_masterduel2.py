@@ -225,3 +225,320 @@ for i, cat in enumerate(cat_names_list):
         )
 
 st.session_state['cats'] = categories
+# ----------- DICTIONNAIRE EXPLICATIONS PAR TYPE/ROLE ET CAS (multilingue) -----------
+ROLE_EXPLAIN = {
+    "starter": {
+        (0, 0): {
+            "fr": "Votre main n'aura aucun Starter : attention au risque de ne pas jouer !",
+            "en": "Your hand will never open a Starter: you risk not being able to play!"
+        },
+        (1, 1): {
+            "fr": "Au moins 1 Starter garanti : deck stable et fiable.",
+            "en": "At least 1 Starter guaranteed: stable, reliable deck."
+        },
+        (1, 3): {
+            "fr": "Vous ouvrez quasi toujours un Starter, plusieurs options en main.",
+            "en": "You almost always open a Starter, with multiple options."
+        },
+        "default_pos": {
+            "fr": "Bonne probabilité d'ouvrir un Starter. Main jouable dans la majorité des cas.",
+            "en": "Good odds to open a Starter. Playable hand in most cases."
+        },
+        "default_neg": {
+            "fr": "Faible chance de voir un Starter : deck instable, attention aux mauvaises mains.",
+            "en": "Low chance to open a Starter: unstable deck, beware of bad hands."
+        }
+    },
+    "extender": {
+        (0, 0): {
+            "fr": "Aucun Extender dans la main : peu de rebond en cas d'interruption.",
+            "en": "No Extender in hand: low resilience if your play is stopped."
+        },
+        (1, 1): {
+            "fr": "Vous avez toujours 1 Extender en main : bon potentiel de rebond.",
+            "en": "Always 1 Extender in hand: good follow-up potential."
+        },
+        (1, 3): {
+            "fr": "Vos mains permettent de continuer le combo souvent.",
+            "en": "You can extend your combo in most hands."
+        },
+        "default_pos": {
+            "fr": "Bonne chance d'ouvrir un Extender, sécurité en cas de stop.",
+            "en": "Good odds for an Extender, safe if interrupted."
+        },
+        "default_neg": {
+            "fr": "Peu de chance d’avoir un Extender. Attention à la gestion du grind.",
+            "en": "Low odds for an Extender. Watch out for grind games."
+        }
+    },
+    "board breaker": {
+        (0, 0): {
+            "fr": "Aucun Board Breaker dans la main : difficile de gérer un board adverse solide.",
+            "en": "No Board Breaker: hard to deal with strong opposing boards."
+        },
+        (1, 1): {
+            "fr": "Toujours un Board Breaker en main : bon contre les boards adverses.",
+            "en": "Always a Board Breaker: good against strong boards."
+        },
+        "default_pos": {
+            "fr": "Vous ouvrez souvent Board Breaker, utile vs gros boards.",
+            "en": "You often open a Board Breaker, useful against big boards."
+        },
+        "default_neg": {
+            "fr": "Rare d’avoir un Board Breaker. Méfiance contre les decks puissants.",
+            "en": "Rarely have a Board Breaker. Watch out for strong decks."
+        }
+    },
+    "handtrap": {
+        (0, 0): {
+            "fr": "Aucune Handtrap : risque de laisser l’adversaire dérouler.",
+            "en": "No Handtrap: risk letting the opponent play freely."
+        },
+        (1, 3): {
+            "fr": "Souvent au moins 1 Handtrap : pression sur l’adversaire.",
+            "en": "Often at least 1 Handtrap: puts pressure on your opponent."
+        },
+        "default_pos": {
+            "fr": "Bonne fréquence de Handtrap. Défense solide contre les combos.",
+            "en": "Good Handtrap frequency. Strong defense against combos."
+        },
+        "default_neg": {
+            "fr": "Pas assez de Handtrap. Fragile contre les decks rapides.",
+            "en": "Not enough Handtraps. Weak against fast decks."
+        }
+    },
+    "tech card": {
+        (0, 0): {
+            "fr": "Aucune Tech Card en main. Deck très 'pur', peu d’adaptation.",
+            "en": "No Tech Cards in hand. Pure deck, little adaptation."
+        },
+        (1, 2): {
+            "fr": "Parfois des Tech Cards pour surprendre l’adversaire.",
+            "en": "Sometimes Tech Cards to surprise the opponent."
+        },
+        "default_pos": {
+            "fr": "Bonne flexibilité avec vos Tech Cards.",
+            "en": "Good flexibility with your Tech Cards."
+        },
+        "default_neg": {
+            "fr": "Peu/pas de Tech Cards. Peu de solutions aux problèmes de méta.",
+            "en": "Few/no Tech Cards. Fewer meta answers."
+        }
+    },
+    "brick": {
+        (0, 0): {
+            "fr": "Aucune Brick en main, deck très stable !",
+            "en": "No Brick in hand, very stable deck!"
+        },
+        (1, 1): {
+            "fr": "Toujours une Brick : attention, risque de main morte fréquent.",
+            "en": "Always a Brick: risky, dead hands likely."
+        },
+        "default_pos": {
+            "fr": "Très peu de Bricks en main, stabilité maximale.",
+            "en": "Very few Bricks drawn, highly stable."
+        },
+        "default_neg": {
+            "fr": "Vous piochez des Bricks trop souvent, main injouable fréquente.",
+            "en": "You draw Bricks too often, many unplayable hands."
+        }
+    }
+}
+
+# ----------- FONCTIONS DE CALCUL -----------
+
+def hypergeom_prob(deck_size, hand_size, categories):
+    roles = [cat['name'] for cat in categories]
+    counts = {r: 0 for r in roles}
+    mins = {r: 0 for r in roles}
+    maxs = {r: 0 for r in roles}
+    for cat in categories:
+        counts[cat['name']] += cat['q']
+        mins[cat['name']] = cat['min']
+        maxs[cat['name']] = cat['max']
+    details = {}
+    for r in roles:
+        rv = hypergeom(deck_size, counts[r], hand_size)
+        p = 0.0
+        for k in range(mins[r], maxs[r]+1):
+            p += rv.pmf(k)
+        details[r] = p*100
+    return details
+
+def simulate(deck_size, hand_size, categories, n_sim=10000):
+    deck = []
+    for cat in categories:
+        deck += [cat['name']]*cat['q']
+    roles = [cat['name'] for cat in categories]
+    mins = {cat['name']: cat['min'] for cat in categories}
+    maxs = {cat['name']: cat['max'] for cat in categories}
+    success = {r: 0 for r in roles}
+    for _ in range(n_sim):
+        if len(deck) < hand_size: break
+        main = np.random.choice(deck, hand_size, replace=False)
+        role_counts = {r: 0 for r in roles}
+        for card in main:
+            role_counts[card] += 1
+        for r in roles:
+            if mins[r] <= role_counts[r] <= maxs[r]:
+                success[r] += 1
+    results = {r: (success[r]/n_sim)*100 for r in roles}
+    return results
+
+# ----------- GÉNÉRATION EXPLICATION PAR RÔLE ET CAS -----------
+def role_explanation(role, p, mn, mx, lang):
+    key = role.lower()
+    table = ROLE_EXPLAIN.get(key, {})
+    if (mn, mx) in table:
+        return f"{p:.2f}% : {table[(mn, mx)][lang]}"
+    # Générique positif/négatif
+    if p > 70:
+        return f"{p:.2f}% : {table.get('default_pos', {}).get(lang, '')}"
+    else:
+        return f"{p:.2f}% : {table.get('default_neg', {}).get(lang, '')}"
+
+# ----------- LANCER LE CALCUL -----------
+
+calc = st.button(T["calc"], use_container_width=True)
+if calc:
+    with st.spinner("Calcul..."):
+        time.sleep(1.3)
+    st.session_state["run_calc_done"] = True
+else:
+    st.session_state["run_calc_done"] = False
+
+if st.session_state.get("run_calc_done", False):
+    # CALCULS
+    details = hypergeom_prob(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+    )
+    theor_global = 1.0
+    for v in details.values():
+        theor_global *= v/100 if v > 0 else 1
+    theor_global = theor_global * 100
+
+    sim_results = simulate(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+        st.session_state["n_sim"]
+    )
+    monte_global = 1.0
+    for v in sim_results.values():
+        monte_global *= v/100 if v > 0 else 1
+    monte_global = monte_global * 100
+
+    # PRÉPARER LES EXPLICATIONS
+    explanations = []
+    for cat in categories:
+        role = cat['name']
+        p = details.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx, lang)
+        explanations.append(exp)
+
+    # TABLE STREAMLIT
+    table = []
+    for i, cat in enumerate(categories):
+        r = cat["name"]
+        table.append({
+            T["role"]: r,
+            T["theorique"]: round(details[r],2),
+            T["montecarlo"]: round(sim_results[r],2),
+            T["explanation"]: explanations[i]
+        })
+    df = pd.DataFrame(table)
+    st.markdown(f"### {T['res_table']}")
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+    st.markdown(f"**{T['theor_global']}** : {theor_global:.2f}%")
+    st.markdown(f"**{T['mc_global']}** : {monte_global:.2f}%")
+
+    # --------- GRAPHIQUE matplotlib ---------
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    roles = [cat["name"] for cat in categories]
+    values = [details[cat["name"]] for cat in categories]
+    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
+    ax.barh(roles, values, color=colors)
+    ax.set_xlabel('Probabilité (%)' if lang=="fr" else "Probability (%)")
+    ax.set_title(T["graph_theor"])
+    st.pyplot(fig, use_container_width=True)
+
+    # --------- DONUT/Pie pour répartition du deck ---------
+    fig2, ax2 = plt.subplots(figsize=(4, 4))
+    sizes = [cat["q"] for cat in categories]
+    ax2.pie(sizes, labels=roles, autopct="%1.0f%%", startangle=90)
+    ax2.set_title(T["donut_title"])
+    st.pyplot(fig2, use_container_width=True)
+
+    # --------- EXPORT PDF ---------
+    st.markdown(f"### {T['export_title']}")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+
+    def remove_accents(txt):
+        try:
+            return unidecode(str(txt))
+        except Exception:
+            return str(txt)
+
+    def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "", 12)
+        pdf.cell(0, 8, remove_accents(f"{T['main_title']}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['deck_name']}: {deck_name}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['deck_size']}: {deck_size}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['hand_size']}: {hand_size}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['who_starts']}: {T['first'] if first_player else T['second']}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['n_sim']}: {n_sim}"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['theor_global']}: {theor_global:.2f}%"), ln=1)
+        pdf.cell(0, 8, remove_accents(f"{T['mc_global']}: {monte_global:.2f}%"), ln=1)
+        pdf.ln(5)
+        # Tableau
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(55, 8, remove_accents(T["role"]), 1)
+        pdf.cell(35, 8, remove_accents(T["theorique"]), 1)
+        pdf.cell(35, 8, remove_accents(T["montecarlo"]), 1)
+        pdf.cell(0, 8, remove_accents(T["explanation"]), 1)
+        pdf.ln()
+        pdf.set_font("Arial", "", 10)
+        for i, cat in enumerate(categories):
+            role = cat["name"]
+            expl = remove_accents(explanations[i])
+            pdf.cell(55, 8, remove_accents(role), 1)
+            pdf.cell(35, 8, f"{details[role]:.2f}", 1)
+            pdf.cell(35, 8, f"{sim_results[role]:.2f}", 1)
+            pdf.multi_cell(0, 8, expl, border=1)
+        pdf.ln(2)
+        # Graphique
+        if img_bytes is not None:
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                tmp.write(img_bytes.getbuffer())
+                tmp.flush()
+                pdf.image(tmp.name, x=10, w=170)
+        return pdf.output(dest="S").encode("latin1")
+
+    theor_vals = [details[cat["name"]] for cat in categories]
+    monte_vals = [sim_results[cat["name"]] for cat in categories]
+    st.download_button(
+        T["export_pdf"],
+        data=export_results_pdf(
+            st.session_state["deck_name"],
+            st.session_state["deck_size"],
+            st.session_state["hand_size"],
+            st.session_state["first_player"],
+            st.session_state["n_sim"],
+            theor_global,
+            monte_global,
+            theor_vals,
+            monte_vals,
+            explanations,
+            buf
+        ),
+        file_name="simulation_ygo.pdf"
+    )
