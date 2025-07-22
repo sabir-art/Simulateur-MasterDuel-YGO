@@ -1,81 +1,114 @@
 import streamlit as st
-import numpy as np
-from scipy.stats import hypergeom
-import matplotlib.pyplot as plt
-from fpdf import FPDF
 import json
+import time
+import numpy as np
+from fpdf import FPDF
+import matplotlib.pyplot as plt
+from scipy.stats import hypergeom
 
-# --------- Paramètres Langue ---------
-LANGS = {'Français': 'fr', 'English': 'en'}
+# --------- GESTION DE LA LANGUE ---------
+LANGS = {
+    'Français': 'fr',
+    'English': 'en',
+}
 lang_choice = st.sidebar.selectbox("Langue / Language", list(LANGS.keys()), index=0)
 lang = LANGS[lang_choice]
 
-# --------- Variables de Session ---------
+# --------- SESSION STATE INIT ---------
+def reset_all():
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+    st.experimental_rerun()
+
+if st.sidebar.button("🔄 Réinitialiser l'application"):
+    reset_all()
+
 if "deck_name" not in st.session_state:
     st.session_state["deck_name"] = "Mon deck"
 if "deck_size" not in st.session_state:
     st.session_state["deck_size"] = 40
+if "first_player" not in st.session_state:
+    st.session_state["first_player"] = True  # Moi (First)
 if "hand_size" not in st.session_state:
     st.session_state["hand_size"] = 5
-if "first_player" not in st.session_state:
-    st.session_state["first_player"] = True
+if "hand_size_user_set" not in st.session_state:
+    st.session_state["hand_size_user_set"] = False
 if "n_sim" not in st.session_state:
     st.session_state["n_sim"] = 10000
 
-# --------- UI Sidebar ---------
+# --------- UI SIDEBAR ---------
 st.sidebar.markdown("### Paramètres du deck")
-st.session_state["deck_name"] = st.sidebar.text_input("Nom du deck", st.session_state["deck_name"])
-st.session_state["deck_size"] = st.sidebar.number_input("Taille du deck", 30, 60, st.session_state["deck_size"])
 
-# Qui commence ?
+# Nom deck
+st.session_state["deck_name"] = st.sidebar.text_input(
+    "Nom du deck", st.session_state["deck_name"]
+)
+# Taille deck
+st.session_state["deck_size"] = st.sidebar.number_input(
+    "Taille du deck", 30, 60, st.session_state["deck_size"]
+)
+
+# Qui commence ? First/Second
 who = st.sidebar.radio(
-    "Qui commence ?",
+    "Qui commence ?",
     ["Moi (First)", "L'adversaire (Second)"],
     index=0 if st.session_state["first_player"] else 1,
     horizontal=True
 )
 st.session_state["first_player"] = (who == "Moi (First)")
 
-# Ajuste main de départ à 6 si Second, 5 si First
-if st.session_state["first_player"]:
-    default_hand_size = 5
-else:
-    default_hand_size = 6
-
-# Sauf si l'utilisateur a modifié la main
-if "hand_size_user_set" not in st.session_state:
-    st.session_state["hand_size"] = default_hand_size
+# Main par défaut selon First/Second
+default_hand_size = 5 if st.session_state["first_player"] else 6
+main_value = st.session_state["hand_size"] if st.session_state["hand_size_user_set"] else default_hand_size
 
 hand_size = st.sidebar.number_input(
-    "Taille de la main de départ",
-    4, 7,
-    st.session_state["hand_size"],
-    key="hand_size"
+    "Taille de la main de départ", 4, 7, main_value, key="hand_size"
 )
-
-if hand_size != default_hand_size:
+# Garde mémoire si utilisateur modifie la main
+if st.session_state["hand_size"] != default_hand_size:
     st.session_state["hand_size_user_set"] = True
 else:
     st.session_state["hand_size_user_set"] = False
 
-st.session_state["hand_size"] = hand_size
-
+# Nombre de simulations Monte Carlo
 st.session_state["n_sim"] = st.sidebar.number_input(
-    "Nombre de simulations Monte Carlo", 1000, 50000, st.session_state["n_sim"], step=1000
+    "Nombre de simulations Monte Carlo", 1000, 100000, st.session_state["n_sim"], step=1000
 )
 
-# --------- Types de cartes ---------
+# --------- EXPORT PDF ---------
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, result_text, img_bytes=None):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 12, "Simulateur Yu-Gi-Oh! - Rapport de simulation", 0, 1, "C")
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 10, f"Deck : {deck_name}", 0, 1)
+    pdf.cell(0, 10, f"Taille du deck : {deck_size} | Main départ : {hand_size} | {'First' if first_player else 'Second'}", 0, 1)
+    pdf.cell(0, 10, f"Nombre de simulations Monte Carlo : {n_sim}", 0, 1)
+    pdf.ln(4)
+    pdf.multi_cell(0, 9, result_text)
+    if img_bytes is not None:
+        pdf.image(img_bytes, x=20, w=170)
+    return pdf.output(dest="S").encode("latin-1")
+
+# --------- TITRE PRINCIPAL ---------
+st.title("Simulateur de probabilités Yu-Gi-Oh! Master Duel")
+st.caption("Créez votre deck, simulez vos probabilités d'ouverture et exportez vos résultats en PDF.")
+
+# ------ SUITE : (PARTIE 2) ------
+# ----------- DÉFINITION DES RÔLES PAR DÉFAUT -----------
 DEFAULT_CATS = [
     {"name": "Starter", "desc": "Carte qui lance le combo/stratégie principale.", "q": 12, "min": 1, "max": 3},
-    {"name": "Extender", "desc": "Permet de continuer ou d’étendre le plan de jeu si interrompu.", "q": 9, "min": 0, "max": 3},
+    {"name": "Extender", "desc": "Permet de continuer ou d’étendre ton jeu après le début du combo.", "q": 9, "min": 0, "max": 3},
     {"name": "Board Breaker", "desc": "Permet de gérer les cartes adverses déjà sur le terrain.", "q": 8, "min": 0, "max": 3},
     {"name": "Handtrap", "desc": "Carte qui s’active depuis la main pendant le tour adverse.", "q": 8, "min": 0, "max": 3},
     {"name": "Tech Card", "desc": "Répond à un problème précis du méta ou d’un archétype.", "q": 3, "min": 0, "max": 2},
     {"name": "Brick", "desc": "Carte que tu ne veux surtout PAS piocher dans ta main de départ.", "q": 2, "min": 0, "max": 1},
 ]
+DEFAULT_CATNAMES = "\n".join([cat["name"] for cat in DEFAULT_CATS])
 
 if "cat_names" not in st.session_state:
-    st.session_state['cat_names'] = "\n".join([cat["name"] for cat in DEFAULT_CATS])
+    st.session_state['cat_names'] = DEFAULT_CATNAMES
 if "cats" not in st.session_state:
     st.session_state['cats'] = DEFAULT_CATS
 
@@ -99,15 +132,20 @@ for i, cat in enumerate(cat_names_list):
     with col2:
         mn = st.number_input(f"Min '{cat}' en main", 0, st.session_state['hand_size'], default_min, key=f"{cat}_mn")
     with col3:
-        mx = st.number_input(f"Max '{cat}' en main", mn, min(st.session_state['hand_size'], 5), default_max, key=f"{cat}_mx")
+        mx = st.number_input(f"Max '{cat}' en main", mn, min(st.session_state['hand_size'], 5), default_max, key=f"{cat}_mx")  # max en main à 5
     categories.append({'name': cat, 'q': q, 'min': mn, 'max': mx, "desc": desc})
     if desc:
         st.markdown(f'<span style="font-size:0.97em;color:#b3b3b3;opacity:0.68; margin-left:2px">{desc}</span>', unsafe_allow_html=True)
 
 st.session_state['cats'] = categories
 
-# --------- Fonctions de calcul ---------
+# ----------- FONCTIONS DE CALCUL -----------
 def hypergeom_prob(deck_size, hand_size, categories):
+    """
+    Calcule la probabilité hypergéométrique pour chaque type
+    Retourne : dict(role: probabilité %)
+    """
+    from scipy.stats import hypergeom
     roles = [cat['name'] for cat in categories]
     counts = {r: 0 for r in roles}
     mins = {r: 0 for r in roles}
@@ -126,6 +164,10 @@ def hypergeom_prob(deck_size, hand_size, categories):
     return details
 
 def simulate(deck_size, hand_size, categories, n_sim=10000):
+    """
+    Simule n_sim mains de départ pour donner des statistiques réelles par type
+    """
+    import numpy as np
     deck = []
     for cat in categories:
         deck += [cat['name']]*cat['q']
@@ -145,38 +187,94 @@ def simulate(deck_size, hand_size, categories, n_sim=10000):
     results = {r: (success[r]/n_sim)*100 for r in roles}
     return results
 
-def display_role_results(details, categories, title):
+# ----------- PHRASES INTELLIGENTES PAR RÔLE & RANGE -----------
+def role_explanation(role, p, mn, mx):
+    """
+    Génère une explication intelligente pour chaque type/role, selon min/max choisi.
+    """
+    p = round(p, 2)
+    role_low = role.lower()
+    if role_low == "starter":
+        if mn == 0 and mx <= 1:
+            if p > 70:
+                return f"{p}% : Vous avez {p}% de chance de ne PAS ouvrir Starter. Négatif : vous risquez souvent de ne pas jouer !"
+            else:
+                return f"{p}% : {p}% de chance de ne pas ouvrir Starter. Positif : la majorité du temps, vous en aurez un."
+        else:
+            if p > 70:
+                return f"{p}% : {p}% de chance d’ouvrir au moins 1 Starter (entre {mn} et {mx}). Positif : votre deck est stable."
+            else:
+                return f"{p}% : Seulement {p}% de chance d’ouvrir Starter. Négatif, vous risquez de manquer de plan de jeu."
+    elif role_low == "extender":
+        if mn == 0 and mx == 1:
+            if p > 70:
+                return f"{p}% : {p}% de chance d’ouvrir 0 ou 1 Extender. Négatif : peu de rebond si le plan est stoppé."
+            else:
+                return f"{p}% : {p}% de chance d’avoir au moins un Extender. Positif, vous pouvez continuer le combo."
+        else:
+            if p > 70:
+                return f"{p}% : {p}% de chance d’avoir entre {mn} et {mx} Extender(s). Positif, rebond possible."
+            else:
+                return f"{p}% : Faible probabilité de voir des Extender. Attention au manque de ressources."
+    elif role_low == "board breaker":
+        if mn == 0 and mx == 0:
+            return f"{p}% : {p}% de chance d’ouvrir SANS Board Breaker (souvent normal si vous jouez First)."
+        else:
+            return f"{p}% : {p}% de chance d’ouvrir avec {mn} à {mx} Board Breaker(s). Utile pour casser le terrain adverse."
+    elif role_low == "handtrap":
+        if p > 70:
+            return f"{p}% : {p}% de chance d’avoir entre {mn} et {mx} Handtrap(s). Positif, vous pourrez ralentir l’adversaire."
+        else:
+            return f"{p}% : Seulement {p}% de chance d’avoir une Handtrap. Risqué si le meta en demande beaucoup."
+    elif role_low == "tech card":
+        if mn == 0 and mx == 0:
+            return f"{p}% : {p}% de chance d’ouvrir SANS Tech Card. Pas grave si votre deck n’en dépend pas."
+        else:
+            return f"{p}% : {p}% de chance d’ouvrir avec {mn} à {mx} Tech Card(s)."
+    elif role_low == "brick":
+        if mx == 0 or (mn == 0 and mx == 1):
+            if p > 70:
+                return f"{p}% : {p}% de chance de ne PAS voir de Brick. Positif, votre deck est fiable."
+            else:
+                return f"{p}% : {p}% de chance de voir une Brick. Négatif, vous risquez de bricker."
+        else:
+            if p > 70:
+                return f"{p}% : {p}% de chance de voir plusieurs Bricks. Négatif : risque de main injouable."
+            else:
+                return f"{p}% : {p}% de chance de ne pas trop voir de Brick. Plutôt positif."
+    else:
+        return f"{p}% : {p}% de chance d’avoir entre {mn} et {mx} {role}(s)."
+
+def display_role_results(details, categories):
     color_map = {
         "starter": "#08e078",
         "extender": "#f44",
         "board breaker": "#11e1e1",
-        "handtrap": "#08e078",
+        "handtrap": "#ffc300",
         "tech card": "#fc51fa",
-        "brick": "#08e078"
+        "brick": "#ff5757"
     }
-    st.markdown(f"**{title}**")
     for cat in categories:
         role = cat['name']
         color = color_map.get(role.lower(), "#fff")
         p = details.get(role, 0)
         mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx)
         st.markdown(
             f"""
-            <div style="margin-bottom:8px;">
-                <span style="font-weight:700; color:{color}; font-size:1.13em;">{role} : {p:.2f}%</span><br>
-                <span style="color:#e5e5e5; font-size:1em;">
-                {p:.2f}% : Probabilité d’avoir entre {mn} et {mx} {role}(s) en main.
-                </span>
-                <hr style="border:0.5px solid {color}; opacity:0.45; margin:9px 0;">
+            <div style="margin-bottom:9px;">
+                <span style="font-weight:700; color:{color}; font-size:1.11em;">{role} : {p:.2f}%</span><br>
+                <span style="font-size:1em;">{exp}</span>
+                <hr style="border:0.5px solid {color}; opacity:0.36; margin:8px 0;">
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-# --------- BOUTON CALCUL & Animation ---------
-import time
+# ----------- ANIMATION, CALCUL & AFFICHAGE -----------
 calc = st.button("Calculer les probabilités !", use_container_width=True)
 if calc:
+    # Animation de 10s
     progress = st.empty()
     progress_text = st.empty()
     for percent in range(0, 101, 2):
@@ -185,78 +283,62 @@ if calc:
         progress_text.write(f"Calcul en cours... ({percent}%)")
     progress.empty()
     progress_text.empty()
+    st.success("Calcul terminé !")
     st.session_state["run_calc_done"] = True
 else:
     st.session_state["run_calc_done"] = False
 
-# --------- AFFICHAGE RESULTATS ---------
+# ----------- Résultats après calcul -----------
 if st.session_state.get("run_calc_done", False):
-    st.header("Résultats")
-
-    # -- Résultat Monte Carlo
-    mc_details = simulate(
+    st.header("Résultats - Probabilités hypergéométriques")
+    details = hypergeom_prob(
         st.session_state["deck_size"],
         st.session_state["hand_size"],
         categories,
-        int(st.session_state["n_sim"])
     )
-    display_role_results(mc_details, categories, "Résultat Monte Carlo (simulé)")
-    st.markdown("<br>", unsafe_allow_html=True)
+    display_role_results(details, categories)
 
-    # -- Probabilité théorique
-    theor_details = hypergeom_prob(
+    # --------- Monte Carlo -----------
+    st.header("Résultats - Simulation Monte Carlo")
+    sim_results = simulate(
         st.session_state["deck_size"],
         st.session_state["hand_size"],
-        categories
+        categories,
+        st.session_state["n_sim"]
     )
-    display_role_results(theor_details, categories, "Probabilité théorique (hypergéométrique)")
-    st.markdown("<br>", unsafe_allow_html=True)
+    display_role_results(sim_results, categories)
 
-    # -- Statistiques visuelles
-    st.subheader("Visualisation")
+    # --------- GRAPHIQUE matplotlib ---------
     fig, ax = plt.subplots()
     roles = [cat["name"] for cat in categories]
-    values = [mc_details[cat["name"]] for cat in categories]
-    colors = ["#08e078", "#f44", "#11e1e1", "#08e078", "#fc51fa", "#08e078"][:len(roles)]
+    values = [details[cat["name"]] for cat in categories]
+    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
     ax.barh(roles, values, color=colors)
-    ax.set_xlabel('Probabilité Monte Carlo (%)')
-    ax.set_title("Probabilité d'obtenir chaque type de carte")
+    ax.set_xlabel('Probabilité (%)')
+    ax.set_title("Probabilité d'obtenir chaque type de carte (Hypergéométrique)")
     st.pyplot(fig)
 
-# --------- EXPORT PDF (optionnel) ---------
-def export_pdf(deck_name, deck_size, hand_size, n_sim, cats, mc_details, theor_details):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=13)
-    pdf.cell(200, 10, f"Simulateur Yu-Gi-Oh! - Résultats", ln=True, align="C")
-    pdf.set_font("Arial", size=11)
-    pdf.cell(200, 10, f"Deck: {deck_name} - Taille: {deck_size} - Main: {hand_size} - Simu: {n_sim}", ln=True, align="L")
-    pdf.ln(4)
-    pdf.cell(200, 10, "---- Résultat Monte Carlo ----", ln=True, align="L")
-    for cat in cats:
-        pdf.cell(200, 10, f"{cat['name']}: {mc_details[cat['name']]:.2f}%", ln=True)
-    pdf.ln(4)
-    pdf.cell(200, 10, "---- Probabilité théorique ----", ln=True, align="L")
-    for cat in cats:
-        pdf.cell(200, 10, f"{cat['name']}: {theor_details[cat['name']]:.2f}%", ln=True)
-    pdf.output("resultats_ygo.pdf")
-    return "resultats_ygo.pdf"
+    # --------- EXPORT PDF ---------
+    st.markdown("### Export PDF des résultats")
+    import io
+    result_text = ""
+    for cat in categories:
+        role = cat['name']
+        p = details.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        result_text += f"{role} : {p:.2f}%\n" + role_explanation(role, p, mn, mx) + "\n\n"
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+    if st.download_button("Exporter en PDF", data=export_results_pdf(
+        st.session_state["deck_name"],
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        st.session_state["first_player"],
+        st.session_state["n_sim"],
+        result_text,
+        buf
+    ), file_name="simulation_ygo.pdf"):
+        st.success("PDF téléchargé avec succès !")
 
-if st.session_state.get("run_calc_done", False):
-    if st.button("Exporter en PDF", type="secondary"):
-        file_path = export_pdf(
-            st.session_state["deck_name"],
-            st.session_state["deck_size"],
-            st.session_state["hand_size"],
-            st.session_state["n_sim"],
-            categories,
-            mc_details,
-            theor_details
-        )
-        with open(file_path, "rb") as f:
-            st.download_button(
-                label="Télécharger le PDF des résultats",
-                data=f,
-                file_name=file_path,
-                mime="application/pdf"
-            )
+# ----------- FIN PARTIE 2 -----------
