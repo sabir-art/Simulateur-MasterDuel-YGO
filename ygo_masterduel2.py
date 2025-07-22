@@ -496,7 +496,11 @@ def remove_accents(txt):
     
 # ------------- Export results PDF --------------
 
-def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes, img2_bytes):
+def export_results_pdf(
+    deck_name, deck_size, hand_size, first_player, n_sim,
+    theor_global, monte_global, theor_vals, monte_vals,
+    explanations, img_bytes, img2_bytes, ia_analysis_text  # <- ajoute IA ici
+):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
@@ -511,13 +515,14 @@ def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, the
     pdf.cell(0, 8, remove_accents(f"{T['theor_global']}: {theor_global:.2f}%"), ln=1)
     pdf.cell(0, 8, remove_accents(f"{T['mc_global']}: {monte_global:.2f}%"), ln=1)
     pdf.ln(5)
-    # --- Tableau résultats ---
+
+    # --- Tableau résultats (colonnes larges + multi-ligne explication) ---
     pdf.set_font("Arial", "B", 12)
     pdf.set_fill_color(230, 230, 230)
-    width_role = 38
-    width_theorique = 22
-    width_montecarlo = 25
-    width_explanation = 100
+    width_role = 35
+    width_theorique = 30
+    width_montecarlo = 35
+    width_explanation = 85
     pdf.cell(width_role, 8, remove_accents(T["role"]), 1, 0, "C", 1)
     pdf.cell(width_theorique, 8, remove_accents(T["theorique"]), 1, 0, "C", 1)
     pdf.cell(width_montecarlo, 8, remove_accents(T["montecarlo"]), 1, 0, "C", 1)
@@ -525,17 +530,30 @@ def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, the
     pdf.set_font("Arial", "", 10)
     for i, role in enumerate([cat["name"] for cat in categories]):
         expl = remove_accents(str(explanations[i]))
+        pdf.cell(width_role, 8, remove_accents(role), border=1)
+        pdf.cell(width_theorique, 8, f"{theor_vals[i]:.2f}", border=1, align="C")
+        pdf.cell(width_montecarlo, 8, f"{monte_vals[i]:.2f}", border=1, align="C")
+        # explication sur plusieurs lignes
         x = pdf.get_x()
         y = pdf.get_y()
-        pdf.multi_cell(width_role, 8, remove_accents(role), border=1, align="C")
-        pdf.set_xy(x + width_role, y)
-        pdf.multi_cell(width_theorique, 8, f"{theor_vals[i]:.2f}", border=1, align="C")
-        pdf.set_xy(x + width_role + width_theorique, y)
-        pdf.multi_cell(width_montecarlo, 8, f"{monte_vals[i]:.2f}", border=1, align="C")
-        pdf.set_xy(x + width_role + width_theorique + width_montecarlo, y)
         pdf.multi_cell(width_explanation, 8, expl, border=1)
-        pdf.set_xy(x, y + max(pdf.get_string_width(role) / width_role, 1) * 8)
+        pdf.set_xy(x + width_explanation, y)
+        pdf.ln(0)
+
     pdf.ln(4)
+
+    # --- Analyse IA du deck (NOUVEAU) ---
+    if ia_analysis_text:
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, "Analyse IA du deck :", ln=1)
+        pdf.set_font("Arial", "I", 10)
+        # Coupe la chaîne pour éviter qu'elle déborde
+        lines = ia_analysis_text.split("\n")
+        for line in lines:
+            pdf.multi_cell(0, 8, remove_accents(line))
+        pdf.ln(2)
+
+    # --- Graphique barres ---
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, remove_accents(T["graph_theor"]), ln=1)
     if img_bytes is not None:
@@ -662,31 +680,35 @@ if st.session_state.get("run_calc_done", False):
     stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
 
     if api_key:
-        st.markdown("### 🤖 Analyse IA du deck")
-        with st.spinner("Analyse en cours…"):
-            conseil = get_ia_advice(api_key, stats_txt, lang)
-            st.info(conseil)
-    else:
-        st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
+    st.markdown("### 🤖 Analyse IA du deck")
+    with st.spinner("Analyse en cours…"):
+        conseil = get_ia_advice(api_key, stats_txt, lang)
+        st.info(conseil)
+    ia_analysis_text = conseil
+else:
+    st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
+    ia_analysis_text = ""
+
 
     # 7. Export PDF (bouton)
     theor_vals = [details[cat["name"]] for cat in categories]
     monte_vals = [sim_results[cat["name"]] for cat in categories]
-    st.download_button(
-        T["export_pdf"],
-        data=export_results_pdf(
-            st.session_state["deck_name"],
-            st.session_state["deck_size"],
-            st.session_state["hand_size"],
-            st.session_state["first_player"],
-            st.session_state["n_sim"],
-            theor_global,
-            monte_global,
-            theor_vals,
-            monte_vals,
-            explanations,
-            buf,
-            buf2,
-        ),
-        file_name="simulation_ygo.pdf"
-    )
+   st.download_button(
+    T["export_pdf"],
+    data=export_results_pdf(
+        st.session_state["deck_name"],
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        st.session_state["first_player"],
+        st.session_state["n_sim"],
+        theor_global,
+        monte_global,
+        theor_vals,
+        monte_vals,
+        explanations,
+        buf,
+        buf2,
+        ia_analysis_text  # <-- ajoute ici !
+    ),
+    file_name="simulation_ygo.pdf"
+)
