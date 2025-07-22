@@ -76,20 +76,49 @@ st.session_state["n_sim"] = st.sidebar.number_input(
 )
 
 # --------- EXPORT PDF ---------
-def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, result_text, img_bytes=None):
+# ----------- EXPORT PDF UTILITAIRE -----------
+from fpdf import FPDF
+
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_details, monte_details, result_text, img_bytes):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 12, "Simulateur Yu-Gi-Oh! - Rapport de simulation", 0, 1, "C")
+    pdf.cell(0, 12, f"Simulation Probabilités Yu-Gi-Oh!", ln=1, align="C")
     pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 10, f"Deck : {deck_name}", 0, 1)
-    pdf.cell(0, 10, f"Taille du deck : {deck_size} | Main départ : {hand_size} | {'First' if first_player else 'Second'}", 0, 1)
-    pdf.cell(0, 10, f"Nombre de simulations Monte Carlo : {n_sim}", 0, 1)
+    pdf.cell(0, 9, f"Deck : {deck_name}", ln=1)
+    pdf.cell(0, 8, f"Taille du deck : {deck_size}", ln=1)
+    pdf.cell(0, 8, f"Main de départ : {hand_size}", ln=1)
+    pdf.cell(0, 8, f"{'First' if first_player else 'Second'}", ln=1)
+    pdf.cell(0, 8, f"Simulations Monte Carlo : {n_sim}", ln=1)
     pdf.ln(4)
-    pdf.multi_cell(0, 9, result_text)
+    pdf.set_font("Arial", "B", 13)
+    pdf.cell(0, 8, f"Probabilité théorique générale : {theor_global:.2f}%", ln=1)
+    pdf.cell(0, 8, f"Probabilité Monte Carlo générale : {monte_global:.2f}%", ln=1)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Détails par rôle (théorique):", ln=1)
+    pdf.set_font("Arial", "", 11)
+    for t in theor_details:
+        pdf.multi_cell(0, 6, t)
+    pdf.ln(3)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Détails par rôle (Monte Carlo):", ln=1)
+    pdf.set_font("Arial", "", 11)
+    for t in monte_details:
+        pdf.multi_cell(0, 6, t)
+    pdf.ln(3)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Résumé complet :", ln=1)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, result_text)
+    pdf.ln(4)
+    # Image
     if img_bytes is not None:
-        pdf.image(img_bytes, x=20, w=170)
-    return pdf.output(dest="S").encode("latin-1")
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(img_bytes.getbuffer())
+            tmp.flush()
+            pdf.image(tmp.name, x=20, w=170)
+    return pdf.output(dest="S").encode("latin1")
 
 # --------- TITRE PRINCIPAL ---------
 st.title("Simulateur de probabilités Yu-Gi-Oh! Master Duel")
@@ -290,15 +319,40 @@ else:
 
 # ----------- Résultats après calcul -----------
 if st.session_state.get("run_calc_done", False):
-    st.header("Résultats - Probabilités hypergéométriques")
+    st.header("Résultats - Probabilités")
+
+    # ----------- Probabilités hypergéométriques -----------
     details = hypergeom_prob(
         st.session_state["deck_size"],
         st.session_state["hand_size"],
         categories,
     )
-    display_role_results(details, categories)
+    # Proba globale théorique (toutes les conditions réunies)
+    theor_global = 1.0
+    for v in details.values():
+        theor_global *= v/100 if v > 0 else 1
+    theor_global = theor_global * 100
 
-    # --------- Monte Carlo -----------
+    st.subheader(f"Probabilité théorique globale : {theor_global:.2f}%")
+    theor_explains = []
+    for cat in categories:
+        role = cat['name']
+        p = details.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx)
+        theor_explains.append(f"{role} : {p:.2f}%\n{exp}\n")
+        st.markdown(
+            f"""
+            <div style="margin-bottom:8px;">
+                <span style="font-weight:700; color:#1ed760; font-size:1.13em;">{role} : {p:.2f}%</span><br>
+                <span style="font-size:1em;">{exp}</span>
+                <hr style="border:0.5px solid #1ed760; opacity:0.28; margin:8px 0;">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ----------- Monte Carlo -----------
     st.header("Résultats - Simulation Monte Carlo")
     sim_results = simulate(
         st.session_state["deck_size"],
@@ -306,7 +360,29 @@ if st.session_state.get("run_calc_done", False):
         categories,
         st.session_state["n_sim"]
     )
-    display_role_results(sim_results, categories)
+    # Proba globale Monte Carlo (toutes conditions réunies)
+    monte_global = 1.0
+    for v in sim_results.values():
+        monte_global *= v/100 if v > 0 else 1
+    monte_global = monte_global * 100
+    st.subheader(f"Probabilité Monte Carlo globale : {monte_global:.2f}%")
+    monte_explains = []
+    for cat in categories:
+        role = cat['name']
+        p = sim_results.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx)
+        monte_explains.append(f"{role} : {p:.2f}%\n{exp}\n")
+        st.markdown(
+            f"""
+            <div style="margin-bottom:8px;">
+                <span style="font-weight:700; color:#11e1e1; font-size:1.13em;">{role} (MC) : {p:.2f}%</span><br>
+                <span style="font-size:1em;">{exp}</span>
+                <hr style="border:0.5px solid #11e1e1; opacity:0.28; margin:8px 0;">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # --------- GRAPHIQUE matplotlib ---------
     fig, ax = plt.subplots()
@@ -321,24 +397,25 @@ if st.session_state.get("run_calc_done", False):
     # --------- EXPORT PDF ---------
     st.markdown("### Export PDF des résultats")
     import io
-    result_text = ""
-    for cat in categories:
-        role = cat['name']
-        p = details.get(role, 0)
-        mn, mx = cat['min'], cat['max']
-        result_text += f"{role} : {p:.2f}%\n" + role_explanation(role, p, mn, mx) + "\n\n"
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
     buf.seek(0)
-    if st.download_button("Exporter en PDF", data=export_results_pdf(
-        st.session_state["deck_name"],
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        st.session_state["first_player"],
-        st.session_state["n_sim"],
-        result_text,
-        buf
-    ), file_name="simulation_ygo.pdf"):
-        st.success("PDF téléchargé avec succès !")
-
-# ----------- FIN PARTIE 2 -----------
+    # Compose texte complet
+    result_text = "Résumé complet :\n\n" + "\n".join(theor_explains) + "\nMonte Carlo :\n" + "\n".join(monte_explains)
+    st.download_button(
+        "Exporter en PDF",
+        data=export_results_pdf(
+            st.session_state["deck_name"],
+            st.session_state["deck_size"],
+            st.session_state["hand_size"],
+            st.session_state["first_player"],
+            st.session_state["n_sim"],
+            theor_global,
+            monte_global,
+            theor_explains,
+            monte_explains,
+            result_text,
+            buf
+        ),
+        file_name="simulation_ygo.pdf"
+    )
