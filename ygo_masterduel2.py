@@ -680,35 +680,34 @@ if st.session_state.get("run_calc_done", False):
     stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
 
     if api_key:
-    st.markdown("### 🤖 Analyse IA du deck")
-    with st.spinner("Analyse en cours…"):
-        conseil = get_ia_advice(api_key, stats_txt, lang)
-        st.info(conseil)
-    ia_analysis_text = conseil
-else:
-    st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
-    ia_analysis_text = ""
-
+        st.markdown("### 🤖 Analyse IA du deck")
+        with st.spinner("Analyse en cours…"):
+            conseil = get_ia_advice(api_key, stats_txt, lang)
+            st.info(conseil)
+        ia_analysis_text = conseil
+    else:
+        st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
+        ia_analysis_text = ""
 
     # 7. Export PDF (bouton)
     theor_vals = [details[cat["name"]] for cat in categories]
     monte_vals = [sim_results[cat["name"]] for cat in categories]
-   st.download_button(
-    T["export_pdf"],
-    data=export_results_pdf(
-        st.session_state["deck_name"],
-        st.session_state["deck_size"],
-        st.session_state["hand_size"],
-        st.session_state["first_player"],
-        st.session_state["n_sim"],
-        theor_global,
-        monte_global,
-        theor_vals,
-        monte_vals,
-        explanations,
-        buf,
-        buf2,
-        ia_analysis_text  # <-- ajoute ici !
-    ),
-    file_name="simulation_ygo.pdf"
-)
+    st.download_button(
+        T["export_pdf"],
+        data=export_results_pdf(
+            st.session_state["deck_name"],
+            st.session_state["deck_size"],
+            st.session_state["hand_size"],
+            st.session_state["first_player"],
+            st.session_state["n_sim"],
+            theor_global,
+            monte_global,
+            theor_vals,
+            monte_vals,
+            explanations,
+            buf,
+            buf2,
+            ia_analysis_text  # <-- ajoute ici !
+        ),
+        file_name="simulation_ygo.pdf"
+    )
