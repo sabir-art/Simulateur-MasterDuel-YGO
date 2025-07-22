@@ -10,7 +10,6 @@ from unidecode import unidecode
 import io
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 import os
 
 # le fichier config.env
