@@ -1,5 +1,6 @@
 # --------- IMPORTS & CONFIG ---------
 import streamlit as st
+import os
 import json
 import time
 import numpy as np
@@ -10,19 +11,18 @@ from unidecode import unidecode
 import io
 import pandas as pd
 import requests
-import os
 
-_env = st.secrets.get("OPENAI_", "")
+# Récupérer la clé API OpenAI depuis les variables d'environnement (Streamlit Cloud: "secrets")
+api_key_env = os.getenv("OPENAI_API_KEY")
 
-# Champ dans la sidebar (priorité à la clé entrée par l'utilisateur)
-user_ = st.sidebar.text_input(
+# Champ pour l'utilisateur dans la sidebar (champ masqué, pré-rempli si une clé existe déjà)
+user_api_key = st.sidebar.text_input(
     "OpenAI API Key (optionnel, pour l'analyse IA)",
     type="password",
-    value="",  
-    placeholder="Votre clé ici (optionnel)"
+    value=api_key_env if api_key_env else ""
 )
 
-# Utilise la clé utilisateur si elle est saisie, sinon la clé stockée dans secrets
+# La clé utilisée sera celle saisie par l'utilisateur, sinon celle des secrets/environnement
 api_key = user_api_key if user_api_key else api_key_env
 
 # --------- TRADUCTIONS ---------
