@@ -122,32 +122,56 @@ st.session_state["n_sim"] = st.sidebar.number_input(
 # Titre principal
 st.title(T["main_title"])
 st.caption(T["subtitle"])
-# ----------- DÉFINITION DES RÔLES PAR DÉFAUT -----------
+# ----------- DÉFINITION DES RÔLES PAR DÉFAUT (MULTILINGUE) -----------
 DEFAULT_CATS = [
-    {"name": "Starter", "desc": {
-        "fr": "Carte qui lance le combo/stratégie principale.",
-        "en": "Card that starts your main combo/strategy."
-    }, "q": 12, "min": 1, "max": 3},
-    {"name": "Extender", "desc": {
-        "fr": "Permet de continuer ou d’étendre le jeu après le début du combo.",
-        "en": "Lets you continue or extend your combo after it begins."
-    }, "q": 9, "min": 0, "max": 3},
-    {"name": "Board Breaker", "desc": {
-        "fr": "Gère les cartes adverses déjà sur le terrain.",
-        "en": "Handles opponent's cards already on the field."
-    }, "q": 8, "min": 0, "max": 3},
-    {"name": "Handtrap", "desc": {
-        "fr": "Carte qui s’active depuis la main durant le tour adverse.",
-        "en": "Activates from hand during the opponent’s turn."
-    }, "q": 8, "min": 0, "max": 3},
-    {"name": "Tech Card", "desc": {
-        "fr": "Répond à un problème précis du méta ou d’un archétype.",
-        "en": "Answers a meta/tech problem or specific archetype."
-    }, "q": 3, "min": 0, "max": 2},
-    {"name": "Brick", "desc": {
-        "fr": "Carte à ne PAS piocher dans la main de départ.",
-        "en": "Card you DO NOT want to draw in your opening hand."
-    }, "q": 2, "min": 0, "max": 1},
+    {
+        "name": "Starter",
+        "desc": {
+            "fr": "Carte qui lance le combo/stratégie principale.",
+            "en": "Card that starts your main combo/strategy."
+        },
+        "q": 12, "min": 1, "max": 3
+    },
+    {
+        "name": "Extender",
+        "desc": {
+            "fr": "Permet de continuer ou d’étendre ton jeu après le début du combo.",
+            "en": "Lets you continue or extend your play after your main combo."
+        },
+        "q": 9, "min": 0, "max": 3
+    },
+    {
+        "name": "Board Breaker",
+        "desc": {
+            "fr": "Permet de gérer les cartes adverses déjà sur le terrain.",
+            "en": "Helps deal with opponent's established board."
+        },
+        "q": 8, "min": 0, "max": 3
+    },
+    {
+        "name": "Handtrap",
+        "desc": {
+            "fr": "Carte qui s’active depuis la main pendant le tour adverse.",
+            "en": "Card you can activate from hand during opponent's turn."
+        },
+        "q": 8, "min": 0, "max": 3
+    },
+    {
+        "name": "Tech Card",
+        "desc": {
+            "fr": "Répond à un problème précis du méta ou d’un archétype.",
+            "en": "Answers a specific metagame or archetype threat."
+        },
+        "q": 3, "min": 0, "max": 2
+    },
+    {
+        "name": "Brick",
+        "desc": {
+            "fr": "Carte que tu ne veux surtout PAS piocher dans ta main de départ.",
+            "en": "Card you definitely do NOT want to draw in your starting hand."
+        },
+        "q": 2, "min": 0, "max": 1
+    },
 ]
 DEFAULT_CATNAMES = "\n".join([cat["name"] for cat in DEFAULT_CATS])
 
@@ -156,9 +180,11 @@ if "cat_names" not in st.session_state:
 if "cats" not in st.session_state:
     st.session_state['cats'] = DEFAULT_CATS
 
-st.markdown(f"### {T['category_config']}")
+st.markdown("### Configuration des types de cartes" if lang == "fr" else "### Card Type Configuration")
+
 cat_names = st.text_area(
-    T["cat_names"],
+    "Noms des catégories (une par ligne, ex : Starter, Extender, Board Breaker, Handtrap, Tech Card, Brick)" if lang == "fr" else
+    "Category names (one per line, ex: Starter, Extender, Board Breaker, Handtrap, Tech Card, Brick)",
     value=st.session_state['cat_names'],
     key="cat_names"
 )
@@ -167,18 +193,33 @@ cat_names_list = [n.strip() for n in cat_names.split('\n') if n.strip()]
 categories = []
 for i, cat in enumerate(cat_names_list):
     col1, col2, col3 = st.columns([2, 2, 2])
+    # Valeurs par défaut robustes
     default_q = st.session_state['cats'][i]['q'] if i < len(st.session_state['cats']) else 0
     default_min = st.session_state['cats'][i]['min'] if i < len(st.session_state['cats']) else 0
     default_max = st.session_state['cats'][i]['max'] if i < len(st.session_state['cats']) else default_min
-    desc = st.session_state['cats'][i]['desc'][lang] if i < len(st.session_state['cats']) and 'desc' in st.session_state['cats'][i] else ""
+    # --- DESC multilingue robuste ---
+    desc_val = st.session_state['cats'][i]['desc'] if i < len(st.session_state['cats']) and 'desc' in st.session_state['cats'][i] else ""
+    if isinstance(desc_val, dict):
+        desc = desc_val.get(lang, "")
+    else:
+        desc = desc_val  # Si jamais string
     with col1:
-        q = st.number_input(f"Nb de '{cat}'", 0, st.session_state['deck_size'], default_q, key=f"{cat}_q")
+        q = st.number_input(
+            f"Nb de '{cat}'" if lang == "fr" else f"Number of '{cat}'",
+            0, st.session_state['deck_size'], default_q, key=f"{cat}_q")
     with col2:
-        mn = st.number_input(f"Min '{cat}' en main", 0, st.session_state['hand_size'], default_min, key=f"{cat}_mn")
+        mn = st.number_input(
+            f"Min '{cat}' en main" if lang == "fr" else f"Min '{cat}' in hand",
+            0, st.session_state['hand_size'], default_min, key=f"{cat}_mn")
     with col3:
-        mx = st.number_input(f"Max '{cat}' en main", mn, min(st.session_state['hand_size'], 5), default_max, key=f"{cat}_mx")
+        mx = st.number_input(
+            f"Max '{cat}' en main" if lang == "fr" else f"Max '{cat}' in hand",
+            mn, min(st.session_state['hand_size'], 5), default_max, key=f"{cat}_mx")
     categories.append({'name': cat, 'q': q, 'min': mn, 'max': mx, "desc": desc})
     if desc:
-        st.markdown(f'<span style="font-size:0.97em;color:#b3b3b3;opacity:0.68; margin-left:2px">{desc}</span>', unsafe_allow_html=True)
+        st.markdown(
+            f'<span style="font-size:0.97em;color:#b3b3b3;opacity:0.68; margin-left:2px">{desc}</span>',
+            unsafe_allow_html=True
+        )
 
 st.session_state['cats'] = categories
