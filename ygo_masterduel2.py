@@ -13,7 +13,6 @@ import requests
 import os
 
 # le fichier config.env
-load_dotenv("config.env")
 api_key_env = os.getenv("OPENAI_API_KEY")
 
 # --- Clé API OpenAI à rentrer dans la sidebar ---
