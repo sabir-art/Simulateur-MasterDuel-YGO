@@ -496,11 +496,7 @@ def remove_accents(txt):
     
 # ------------- Export results PDF --------------
 
-def export_results_pdf(
-    deck_name, deck_size, hand_size, first_player, n_sim,
-    theor_global, monte_global, theor_vals, monte_vals,
-    explanations, img_bytes, img2_bytes, ia_analysis_text  # <- ajoute IA ici
-):
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes, img2_bytes, ia_analysis_text):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
@@ -515,14 +511,13 @@ def export_results_pdf(
     pdf.cell(0, 8, remove_accents(f"{T['theor_global']}: {theor_global:.2f}%"), ln=1)
     pdf.cell(0, 8, remove_accents(f"{T['mc_global']}: {monte_global:.2f}%"), ln=1)
     pdf.ln(5)
-
-    # --- Tableau résultats (colonnes larges + multi-ligne explication) ---
+    # --- Tableau résultats ---
     pdf.set_font("Arial", "B", 12)
     pdf.set_fill_color(230, 230, 230)
-    width_role = 35
-    width_theorique = 30
-    width_montecarlo = 35
-    width_explanation = 85
+    width_role = 38
+    width_theorique = 22
+    width_montecarlo = 25
+    width_explanation = 100
     pdf.cell(width_role, 8, remove_accents(T["role"]), 1, 0, "C", 1)
     pdf.cell(width_theorique, 8, remove_accents(T["theorique"]), 1, 0, "C", 1)
     pdf.cell(width_montecarlo, 8, remove_accents(T["montecarlo"]), 1, 0, "C", 1)
@@ -530,30 +525,17 @@ def export_results_pdf(
     pdf.set_font("Arial", "", 10)
     for i, role in enumerate([cat["name"] for cat in categories]):
         expl = remove_accents(str(explanations[i]))
-        pdf.cell(width_role, 8, remove_accents(role), border=1)
-        pdf.cell(width_theorique, 8, f"{theor_vals[i]:.2f}", border=1, align="C")
-        pdf.cell(width_montecarlo, 8, f"{monte_vals[i]:.2f}", border=1, align="C")
-        # explication sur plusieurs lignes
         x = pdf.get_x()
         y = pdf.get_y()
+        pdf.multi_cell(width_role, 8, remove_accents(role), border=1, align="C")
+        pdf.set_xy(x + width_role, y)
+        pdf.multi_cell(width_theorique, 8, f"{theor_vals[i]:.2f}", border=1, align="C")
+        pdf.set_xy(x + width_role + width_theorique, y)
+        pdf.multi_cell(width_montecarlo, 8, f"{monte_vals[i]:.2f}", border=1, align="C")
+        pdf.set_xy(x + width_role + width_theorique + width_montecarlo, y)
         pdf.multi_cell(width_explanation, 8, expl, border=1)
-        pdf.set_xy(x + width_explanation, y)
-        pdf.ln(0)
-
+        pdf.set_xy(x, y + max(pdf.get_string_width(remove_accents(role)) / width_role, 1) * 8)
     pdf.ln(4)
-
-    # --- Analyse IA du deck (NOUVEAU) ---
-    if ia_analysis_text:
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, "Analyse IA du deck :", ln=1)
-        pdf.set_font("Arial", "I", 10)
-        # Coupe la chaîne pour éviter qu'elle déborde
-        lines = ia_analysis_text.split("\n")
-        for line in lines:
-            pdf.multi_cell(0, 8, remove_accents(line))
-        pdf.ln(2)
-
-    # --- Graphique barres ---
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, remove_accents(T["graph_theor"]), ln=1)
     if img_bytes is not None:
@@ -572,9 +554,16 @@ def export_results_pdf(
             tmp.flush()
             pdf.image(tmp.name, x=45, w=110)
     pdf.ln(3)
+    # ---- Analyse IA (optionnelle) ----
+    if ia_analysis_text:
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, remove_accents("Analyse IA du deck"), ln=1)
+        pdf.set_font("Arial", "", 11)
+        pdf.multi_cell(0, 8, remove_accents(ia_analysis_text))
     pdf.set_font("Arial", "I", 9)
-    pdf.cell(0, 10, "Simulateur Yu-Gi-Oh! - par SABIR Abdellah - 2025", 0, 1, "C")
+    pdf.cell(0, 10, remove_accents("Simulateur Yu-Gi-Oh! - par SABIR Abdellah - 2025"), 0, 1, "C")
     return pdf.output(dest="S").encode("latin1")
+
 
 # ------------- CALCUL & GÉNÉRATION DES RÉSULTATS --------------
 
