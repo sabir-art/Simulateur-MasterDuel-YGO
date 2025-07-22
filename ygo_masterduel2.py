@@ -12,12 +12,19 @@ import io
 import pandas as pd
 import requests
 
-api_key_env = os.getenv("OPENAI_API_KEY")
+# ------------- GESTION SECURISEE DE LA CLE OPENAI ---------------
+# 1. On tente d'aller chercher dans les secrets streamlit (méthode recommandée cloud)
+api_key_env = st.secrets.get("OPENAI_API_KEY", "")
+
+# 2. Saisie optionnelle par l'utilisateur (jamais pré-remplie)
 user_api_key = st.sidebar.text_input(
     "OpenAI API Key (optionnel, pour l'analyse IA)",
     type="password",
-    value=""  # NE PAS pré-remplir
+    value="",  # jamais pré-rempli pour que personne ne voie la clé, même si elle existe
+    help="Vous pouvez utiliser votre propre clé OpenAI si vous souhaitez une analyse personnalisée. Sinon, laissez vide."
 )
+
+# 3. Priorité à la clé saisie par l'utilisateur, sinon on prend celle du secret
 api_key = user_api_key if user_api_key else api_key_env
 
 # --------- TRADUCTIONS ---------
