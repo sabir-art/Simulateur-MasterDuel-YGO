@@ -4,3 +4,8 @@ numpy
 matplotlib
 scipy
 unidecode
+python-dotenv
+pandas
+fpdf
+unidecode
+requests
