@@ -27,6 +27,8 @@ user_api_key = st.sidebar.text_input(
 # 3. Priorité à la clé saisie par l'utilisateur, sinon on prend celle du secret
 api_key = user_api_key if user_api_key else api_key_env
 
+st.write(f"API Key détectée : {'PRÉSENTE' if api_key else 'AUCUNE'}")
+
 # --------- TRADUCTIONS ---------
 TRS = {
     "fr": {
