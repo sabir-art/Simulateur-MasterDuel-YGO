@@ -15,15 +15,6 @@ LANGS = {
 lang_choice = st.sidebar.selectbox("Langue / Language", list(LANGS.keys()), index=0)
 lang = LANGS[lang_choice]
 
-# --------- SESSION STATE INIT ---------
-def reset_all():
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
-    st.experimental_rerun()
-
-if st.sidebar.button("🔄 Réinitialiser l'application"):
-    reset_all()
-
 if "deck_name" not in st.session_state:
     st.session_state["deck_name"] = "Mon deck"
 if "deck_size" not in st.session_state:
