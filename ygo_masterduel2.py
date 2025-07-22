@@ -401,8 +401,15 @@ def role_explanation(role, p, mn, mx, lang):
 
 calc = st.button(T["calc"], use_container_width=True)
 if calc:
-    with st.spinner("Calcul..."):
-        time.sleep(1.3)
+    progress = st.empty()
+    progress_text = st.empty()
+    for percent in range(0, 101, 2):
+        time.sleep(0.1)
+        progress.progress(percent / 100)
+        progress_text.write(f"Calcul en cours... ({percent}%)" if lang == "fr" else f"Calculation in progress... ({percent}%)")
+    progress.empty()
+    progress_text.empty()
+    st.success("Calcul terminé !" if lang == "fr" else "Calculation done!")
     st.session_state["run_calc_done"] = True
 else:
     st.session_state["run_calc_done"] = False
