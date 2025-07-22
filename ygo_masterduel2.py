@@ -1,3 +1,4 @@
+# --------- IMPORTS & CONFIG ---------
 import streamlit as st
 import json
 import time
@@ -8,8 +9,20 @@ from fpdf import FPDF
 from unidecode import unidecode
 import io
 import pandas as pd
+import requests
+from dotenv import load_dotenv
+import os
+
+# le fichier config.env
+load_dotenv("config.env")
+api_key_env = os.getenv("OPENAI_API_KEY")
+
 # --- Clé API OpenAI à rentrer dans la sidebar ---
-api_key = st.sidebar.text_input("OpenAI API Key (optionnel, pour l'analyse IA)", type="password")
+api_key = st.sidebar.text_input(
+    "OpenAI API Key (optionnel, pour l'analyse IA)",
+    type="password",
+    value=api_key_env if api_key_env else ""
+)
 
 # --------- TRADUCTIONS ---------
 TRS = {
@@ -120,10 +133,10 @@ else:
 st.session_state["n_sim"] = st.sidebar.number_input(
     T["n_sim"], 1000, 100000, st.session_state["n_sim"], step=1000
 )
-
-# Titre principal
+# --------- TITRE PRINCIPAL & CONFIGURATION DES CATEGORIES ---------
 st.title(T["main_title"])
 st.caption(T["subtitle"])
+
 # --- Résumé paramètres deck (barre d'info) ---
 def deck_summary(deck_name, deck_size, hand_size, first_player, n_sim, lang):
     if lang == "fr":
@@ -153,6 +166,7 @@ st.markdown(deck_summary(
     st.session_state["n_sim"],
     lang
 ), unsafe_allow_html=True)
+
 # ----------- DÉFINITION DES RÔLES PAR DÉFAUT (MULTILINGUE) -----------
 DEFAULT_CATS = [
     {
@@ -256,6 +270,57 @@ for i, cat in enumerate(cat_names_list):
         )
 
 st.session_state['cats'] = categories
+
+# --- Calcule la probabilité exacte (hypergéométrique) pour chaque type ---
+
+def hypergeom_prob(deck_size, hand_size, categories):
+    """
+    Pour chaque type (catégorie), calcule la probabilité d'en avoir entre min et max dans la main de départ.
+    Utilise la loi hypergéométrique (tirage sans remise).
+    Retourne un dict : {role: proba_en_%}
+    """
+    roles = [cat['name'] for cat in categories]
+    counts = {r: 0 for r in roles}
+    mins = {r: 0 for r in roles}
+    maxs = {r: 0 for r in roles}
+    for cat in categories:
+        counts[cat['name']] += cat['q']
+        mins[cat['name']] = cat['min']
+        maxs[cat['name']] = cat['max']
+    details = {}
+    for r in roles:
+        rv = hypergeom(deck_size, counts[r], hand_size)
+        p = 0.0
+        for k in range(mins[r], maxs[r]+1):
+            p += rv.pmf(k)
+        details[r] = p*100
+    return details
+
+# --- Simule n_sim mains aléatoires, compte les succès pour chaque type ---
+def simulate(deck_size, hand_size, categories, n_sim=10000):
+    """
+    Pour chaque simulation, pioche une main, compte pour chaque type si min <= nb <= max.
+    Retourne un dict : {role: pourcentage de réussite}
+    """
+    deck = []
+    for cat in categories:
+        deck += [cat['name']]*cat['q']
+    roles = [cat['name'] for cat in categories]
+    mins = {cat['name']: cat['min'] for cat in categories}
+    maxs = {cat['name']: cat['max'] for cat in categories}
+    success = {r: 0 for r in roles}
+    for _ in range(n_sim):
+        if len(deck) < hand_size: break
+        main = np.random.choice(deck, hand_size, replace=False)
+        role_counts = {r: 0 for r in roles}
+        for card in main:
+            role_counts[card] += 1
+        for r in roles:
+            if mins[r] <= role_counts[r] <= maxs[r]:
+                success[r] += 1
+    results = {r: (success[r]/n_sim)*100 for r in roles}
+    return results
+
 # ----------- DICTIONNAIRE EXPLICATIONS PAR TYPE/ROLE ET CAS (multilingue) -----------
 ROLE_EXPLAIN = {
     "starter": {
@@ -376,66 +441,33 @@ ROLE_EXPLAIN = {
     }
 }
 
-# ----------- FONCTIONS DE CALCUL -----------
-
-def hypergeom_prob(deck_size, hand_size, categories):
-    roles = [cat['name'] for cat in categories]
-    counts = {r: 0 for r in roles}
-    mins = {r: 0 for r in roles}
-    maxs = {r: 0 for r in roles}
-    for cat in categories:
-        counts[cat['name']] += cat['q']
-        mins[cat['name']] = cat['min']
-        maxs[cat['name']] = cat['max']
-    details = {}
-    for r in roles:
-        rv = hypergeom(deck_size, counts[r], hand_size)
-        p = 0.0
-        for k in range(mins[r], maxs[r]+1):
-            p += rv.pmf(k)
-        details[r] = p*100
-    return details
-
-def simulate(deck_size, hand_size, categories, n_sim=10000):
-    deck = []
-    for cat in categories:
-        deck += [cat['name']]*cat['q']
-    roles = [cat['name'] for cat in categories]
-    mins = {cat['name']: cat['min'] for cat in categories}
-    maxs = {cat['name']: cat['max'] for cat in categories}
-    success = {r: 0 for r in roles}
-    for _ in range(n_sim):
-        if len(deck) < hand_size: break
-        main = np.random.choice(deck, hand_size, replace=False)
-        role_counts = {r: 0 for r in roles}
-        for card in main:
-            role_counts[card] += 1
-        for r in roles:
-            if mins[r] <= role_counts[r] <= maxs[r]:
-                success[r] += 1
-    results = {r: (success[r]/n_sim)*100 for r in roles}
-    return results
+# --- Génère une explication adaptée à la proba, min/max pour chaque type ---
+def role_explanation(role, p, mn, mx, lang):
+    """
+    Retourne une phrase adaptée au résultat selon les seuils typiques (positif/négatif/min/max)
+    """
+    key = role.lower()
+    table = ROLE_EXPLAIN.get(key, {})
+    if (mn, mx) in table:
+        return f"{p:.2f}% : {table[(mn, mx)][lang]}"
+    # Générique positif/négatif si aucun cas spécifique
+    if p > 70:
+        return f"{p:.2f}% : {table.get('default_pos', {}).get(lang, '')}"
+    else:
+        return f"{p:.2f}% : {table.get('default_neg', {}).get(lang, '')}"
     
-# ----------- Fonction d’appel à l’API OpenAI -----------
-
-import requests
+# --- IA advice ---
 
 def get_ia_advice(api_key, resume_stats, lang="fr"):
-    """
-    Appelle ChatGPT pour générer une analyse/conseil basé sur le résumé des stats
-    """
     if not api_key:
         return "Aucune clé API fournie. L'analyse IA n'est pas disponible."
-
     prompt_fr = f"""Tu es un expert Yu-Gi-Oh! et deckbuilder. Voici les probabilités d'ouverture d'un deck :
 {resume_stats}
 Donne une analyse concise (max 5 lignes) sur la stabilité du deck, les points forts/faibles, et donne un conseil d'amélioration."""
     prompt_en = f"""You are a Yu-Gi-Oh! expert and deckbuilder. Here are opening hand odds for a deck:
 {resume_stats}
 Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses, and give a tip for improvement."""
-
     prompt = prompt_fr if lang == "fr" else prompt_en
-
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -453,21 +485,77 @@ Give a concise analysis (max 5 lines) about deck stability, strengths/weaknesses
         return data['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Erreur IA: {e}" if lang == "fr" else f"AI Error: {e}"
+def remove_accents(txt):
+    try:
+        return unidecode(str(txt))
+    except Exception:
+        return str(txt)
+    
+# ------------- Export results PDF --------------
 
+def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes, img2_bytes):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 12, remove_accents(f"{T['main_title']}"), ln=1, align="C")
+    pdf.set_font("Arial", "", 11)
+    pdf.ln(2)
+    pdf.cell(0, 8, remove_accents(f"{T['deck_name']}: {deck_name}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['deck_size']}: {deck_size}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['hand_size']}: {hand_size}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['who_starts']}: {T['first'] if first_player else T['second']}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['n_sim']}: {n_sim}"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['theor_global']}: {theor_global:.2f}%"), ln=1)
+    pdf.cell(0, 8, remove_accents(f"{T['mc_global']}: {monte_global:.2f}%"), ln=1)
+    pdf.ln(5)
+    # --- Tableau résultats ---
+    pdf.set_font("Arial", "B", 12)
+    pdf.set_fill_color(230, 230, 230)
+    width_role = 38
+    width_theorique = 22
+    width_montecarlo = 25
+    width_explanation = 100
+    pdf.cell(width_role, 8, remove_accents(T["role"]), 1, 0, "C", 1)
+    pdf.cell(width_theorique, 8, remove_accents(T["theorique"]), 1, 0, "C", 1)
+    pdf.cell(width_montecarlo, 8, remove_accents(T["montecarlo"]), 1, 0, "C", 1)
+    pdf.cell(width_explanation, 8, remove_accents(T["explanation"]), 1, 1, "C", 1)
+    pdf.set_font("Arial", "", 10)
+    for i, role in enumerate([cat["name"] for cat in categories]):
+        expl = remove_accents(str(explanations[i]))
+        x = pdf.get_x()
+        y = pdf.get_y()
+        pdf.multi_cell(width_role, 8, remove_accents(role), border=1, align="C")
+        pdf.set_xy(x + width_role, y)
+        pdf.multi_cell(width_theorique, 8, f"{theor_vals[i]:.2f}", border=1, align="C")
+        pdf.set_xy(x + width_role + width_theorique, y)
+        pdf.multi_cell(width_montecarlo, 8, f"{monte_vals[i]:.2f}", border=1, align="C")
+        pdf.set_xy(x + width_role + width_theorique + width_montecarlo, y)
+        pdf.multi_cell(width_explanation, 8, expl, border=1)
+        pdf.set_xy(x, y + max(pdf.get_string_width(role) / width_role, 1) * 8)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, remove_accents(T["graph_theor"]), ln=1)
+    if img_bytes is not None:
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(img_bytes.getbuffer())
+            tmp.flush()
+            pdf.image(tmp.name, x=20, w=170)
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, remove_accents(T["donut_title"]), ln=1)
+    if img2_bytes is not None:
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(img2_bytes.getbuffer())
+            tmp.flush()
+            pdf.image(tmp.name, x=45, w=110)
+    pdf.ln(3)
+    pdf.set_font("Arial", "I", 9)
+    pdf.cell(0, 10, "Simulateur Yu-Gi-Oh! - par SABIR Abdellah - 2025", 0, 1, "C")
+    return pdf.output(dest="S").encode("latin1")
 
-# ----------- GÉNÉRATION EXPLICATION PAR RÔLE ET CAS -----------
-def role_explanation(role, p, mn, mx, lang):
-    key = role.lower()
-    table = ROLE_EXPLAIN.get(key, {})
-    if (mn, mx) in table:
-        return f"{p:.2f}% : {table[(mn, mx)][lang]}"
-    # Générique positif/négatif
-    if p > 70:
-        return f"{p:.2f}% : {table.get('default_pos', {}).get(lang, '')}"
-    else:
-        return f"{p:.2f}% : {table.get('default_neg', {}).get(lang, '')}"
-
-# ----------- LANCER LE CALCUL -----------
+# ------------- CALCUL & GÉNÉRATION DES RÉSULTATS --------------
 
 calc = st.button(T["calc"], use_container_width=True)
 if calc:
@@ -485,8 +573,79 @@ else:
     st.session_state["run_calc_done"] = False
 
 if st.session_state.get("run_calc_done", False):
-    # ... (calculs + affichage + export + tout ce que tu veux)
-    # --- Récapitulatif pour l'IA ---
+    # 1. Calculs probabilistes
+    details = hypergeom_prob(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+    )
+    theor_global = 1.0
+    for v in details.values():
+        theor_global *= v / 100 if v > 0 else 1
+    theor_global = theor_global * 100
+
+    sim_results = simulate(
+        st.session_state["deck_size"],
+        st.session_state["hand_size"],
+        categories,
+        st.session_state["n_sim"]
+    )
+    monte_global = 1.0
+    for v in sim_results.values():
+        monte_global *= v / 100 if v > 0 else 1
+    monte_global = monte_global * 100
+
+    # 2. Explications
+    explanations = []
+    for cat in categories:
+        role = cat['name']
+        p = details.get(role, 0)
+        mn, mx = cat['min'], cat['max']
+        exp = role_explanation(role, p, mn, mx, lang)
+        explanations.append(exp)
+
+    # 3. Table pour Streamlit
+    table = []
+    for i, cat in enumerate(categories):
+        r = cat["name"]
+        table.append({
+            T["role"]: r,
+            T["theorique"]: round(details[r], 2),
+            T["montecarlo"]: round(sim_results[r], 2),
+            T["explanation"]: explanations[i]
+        })
+    df = pd.DataFrame(table)
+    st.markdown(f"### {T['res_table']}")
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+    st.markdown(f"**{T['theor_global']}** : {theor_global:.2f}%")
+    st.markdown(f"**{T['mc_global']}** : {monte_global:.2f}%")
+
+    # 4. Graphiques matplotlib
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    roles = [cat["name"] for cat in categories]
+    values = [details[cat["name"]] for cat in categories]
+    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
+    ax.barh(roles, values, color=colors)
+    ax.set_xlabel('Probabilité (%)' if lang == "fr" else "Probability (%)")
+    ax.set_title(T["graph_theor"])
+    st.pyplot(fig, use_container_width=True)
+
+    fig2, ax2 = plt.subplots(figsize=(4, 4))
+    sizes = [cat["q"] for cat in categories]
+    ax2.pie(sizes, labels=roles, autopct="%1.0f%%", startangle=90)
+    ax2.set_title(T["donut_title"])
+    st.pyplot(fig2, use_container_width=True)
+
+    # 5. Buffers images pour PDF
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    buf.seek(0)
+    buf2 = io.BytesIO()
+    fig2.savefig(buf2, format="png")
+    buf2.seek(0)
+
+    # 6. Analyse IA (optionnelle)
     stats_txt = ""
     for cat in categories:
         role = cat["name"]
@@ -507,99 +666,7 @@ if st.session_state.get("run_calc_done", False):
     else:
         st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
 
-    # PRÉPARER LES EXPLICATIONS
-    explanations = []
-    for cat in categories:
-        role = cat['name']
-        p = details.get(role, 0)
-        mn, mx = cat['min'], cat['max']
-        exp = role_explanation(role, p, mn, mx, lang)
-        explanations.append(exp)
-
-    # TABLE STREAMLIT
-    table = []
-    for i, cat in enumerate(categories):
-        r = cat["name"]
-        table.append({
-            T["role"]: r,
-            T["theorique"]: round(details[r],2),
-            T["montecarlo"]: round(sim_results[r],2),
-            T["explanation"]: explanations[i]
-        })
-    df = pd.DataFrame(table)
-    st.markdown(f"### {T['res_table']}")
-    st.dataframe(df, hide_index=True, use_container_width=True)
-
-    st.markdown(f"**{T['theor_global']}** : {theor_global:.2f}%")
-    st.markdown(f"**{T['mc_global']}** : {monte_global:.2f}%")
-
-    # --------- GRAPHIQUE matplotlib ---------
-    fig, ax = plt.subplots(figsize=(6, 4.5))
-    roles = [cat["name"] for cat in categories]
-    values = [details[cat["name"]] for cat in categories]
-    colors = ["#08e078", "#f44", "#11e1e1", "#ffc300", "#fc51fa", "#ff5757"][:len(roles)]
-    ax.barh(roles, values, color=colors)
-    ax.set_xlabel('Probabilité (%)' if lang=="fr" else "Probability (%)")
-    ax.set_title(T["graph_theor"])
-    st.pyplot(fig, use_container_width=True)
-
-    # --------- DONUT/Pie pour répartition du deck ---------
-    fig2, ax2 = plt.subplots(figsize=(4, 4))
-    sizes = [cat["q"] for cat in categories]
-    ax2.pie(sizes, labels=roles, autopct="%1.0f%%", startangle=90)
-    ax2.set_title(T["donut_title"])
-    st.pyplot(fig2, use_container_width=True)
-
-    # --------- EXPORT PDF ---------
-    st.markdown(f"### {T['export_title']}")
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-
-    def remove_accents(txt):
-        try:
-            return unidecode(str(txt))
-        except Exception:
-            return str(txt)
-
-    def export_results_pdf(deck_name, deck_size, hand_size, first_player, n_sim, theor_global, monte_global, theor_vals, monte_vals, explanations, img_bytes):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", "", 12)
-        pdf.cell(0, 8, remove_accents(f"{T['main_title']}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['deck_name']}: {deck_name}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['deck_size']}: {deck_size}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['hand_size']}: {hand_size}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['who_starts']}: {T['first'] if first_player else T['second']}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['n_sim']}: {n_sim}"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['theor_global']}: {theor_global:.2f}%"), ln=1)
-        pdf.cell(0, 8, remove_accents(f"{T['mc_global']}: {monte_global:.2f}%"), ln=1)
-        pdf.ln(5)
-        # Tableau
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(55, 8, remove_accents(T["role"]), 1)
-        pdf.cell(35, 8, remove_accents(T["theorique"]), 1)
-        pdf.cell(35, 8, remove_accents(T["montecarlo"]), 1)
-        pdf.cell(0, 8, remove_accents(T["explanation"]), 1)
-        pdf.ln()
-        pdf.set_font("Arial", "", 10)
-        for i, cat in enumerate(categories):
-            role = cat["name"]
-            expl = remove_accents(explanations[i])
-            pdf.cell(55, 8, remove_accents(role), 1)
-            pdf.cell(35, 8, f"{details[role]:.2f}", 1)
-            pdf.cell(35, 8, f"{sim_results[role]:.2f}", 1)
-            pdf.multi_cell(0, 8, expl, border=1)
-        pdf.ln(2)
-        # Graphique
-        if img_bytes is not None:
-            import tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                tmp.write(img_bytes.getbuffer())
-                tmp.flush()
-                pdf.image(tmp.name, x=10, w=170)
-        return pdf.output(dest="S").encode("latin1")
-
+    # 7. Export PDF (bouton)
     theor_vals = [details[cat["name"]] for cat in categories]
     monte_vals = [sim_results[cat["name"]] for cat in categories]
     st.download_button(
@@ -615,38 +682,8 @@ if st.session_state.get("run_calc_done", False):
             theor_vals,
             monte_vals,
             explanations,
-            buf
+            buf,
+            buf2,
         ),
         file_name="simulation_ygo.pdf"
     )
-# --- Récapitulatif pour l'IA ---
-stats_txt = ""
-for cat in categories:
-    role = cat["name"]
-    theor = details[role]
-    monte = sim_results[role]
-    if lang == "fr":
-        stats_txt += f"{role}: Théorique {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
-    else:
-        stats_txt += f"{role}: Theoretical {theor:.2f}% / Monte Carlo {monte:.2f}%\n"
-stats_txt += f"{T['theor_global']}: {theor_global:.2f}%\n"
-stats_txt += f"{T['mc_global']}: {monte_global:.2f}%\n"
-
-if api_key:
-    st.markdown("### 🤖 Analyse IA du deck")
-    with st.spinner("Analyse en cours…"):
-        conseil = get_ia_advice(api_key, stats_txt, lang)
-        st.info(conseil)
-else:
-    st.markdown("*(Entrer une clé OpenAI dans la sidebar pour générer une analyse IA personnalisée)*")
-
-    # --- Copyright ---
-    st.markdown("""
-<hr style='margin-top: 30px; margin-bottom: 5px; opacity:0.25'>
-<center>
-    <span style='color:#aaa; font-size:0.96em'>
-        Simulateur Yu-Gi-Oh! - par SABIR Abdellah - 2025
-    </span>
-</center>
-""", unsafe_allow_html=True)
-
